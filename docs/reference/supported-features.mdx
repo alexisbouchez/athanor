@@ -1,0 +1,71 @@
+---
+title: Supported Features
+description: What subset of GitHub Actions syntax athanor supports
+---
+
+## Supported
+
+<CardGroup cols={2}>
+  <Card title="run: steps" icon="terminal">
+    Shell scripts executed via bash (or configured shell)
+  </Card>
+  <Card title="Job dependencies" icon="diagram-project">
+    `needs:` with DAG resolution and concurrent execution
+  </Card>
+  <Card title="Environment variables" icon="sliders">
+    `env:` at workflow, job, and step levels
+  </Card>
+  <Card title="Step outputs" icon="arrow-right-arrow-left">
+    `$GITHUB_OUTPUT` file and `$\{{ steps.id.outputs.key }}` expressions
+  </Card>
+  <Card title="Conditions" icon="code-branch">
+    `if: success()`, `failure()`, `always()`
+  </Card>
+  <Card title="continue-on-error" icon="forward">
+    Step failures don't fail the job
+  </Card>
+  <Card title="working-directory" icon="folder">
+    Per-step or via job defaults
+  </Card>
+  <Card title="shell" icon="gear">
+    Per-step or via job defaults (bash, sh, etc.)
+  </Card>
+  <Card title="Step id" icon="tag">
+    Naming steps for output references
+  </Card>
+  <Card title="Job defaults" icon="layer-group">
+    Default shell and working-directory for all steps
+  </Card>
+</CardGroup>
+
+## Not Yet Supported
+
+These features are recognized but not implemented. Workflows using them will either
+be partially executed or fail at parse time.
+
+| Feature | Notes |
+|---|---|
+| `uses:` actions | Marketplace and local actions are not supported |
+| `matrix:` strategy | No matrix expansion |
+| `container:` / `services:` | No Docker containers |
+| Reusable workflows | `workflow_call` not supported |
+| Composite actions | Not supported |
+| `$GITHUB_ENV` | Cannot set env vars for subsequent steps via file |
+| `$GITHUB_PATH` | Cannot modify PATH for subsequent steps via file |
+| Full expression syntax | Only `steps.*.outputs.*` patterns are expanded |
+| `env.*` / `github.*` context | Expression contexts beyond step outputs |
+| Functions in expressions | `contains()`, `toJSON()`, `startsWith()`, etc. |
+| Secrets | `secrets.*` context |
+| Permissions | `permissions:` field |
+| Concurrency | `concurrency:` groups |
+| Timeout | `timeout-minutes:` |
+| Artifacts | `actions/upload-artifact`, `actions/download-artifact` |
+
+## Roadmap
+
+Planned for future versions:
+
+1. **`$GITHUB_ENV`** and **`$GITHUB_PATH`** support
+2. **Full expression evaluation** (`env.*`, `github.*`, functions)
+3. **MicroVM isolation** — run jobs inside CloudHypervisor VMs
+4. **`uses:` actions** — clone and execute action repositories

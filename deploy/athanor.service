@@ -1,0 +1,19 @@
+[Unit]
+Description=Athanor CI Engine
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/athanor serve
+Restart=always
+RestartSec=5
+User=athanor
+Group=athanor
+WorkingDirectory=/var/lib/athanor
+EnvironmentFile=/etc/athanor/env
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/athanor /tmp
+
+[Install]
+WantedBy=multi-user.target

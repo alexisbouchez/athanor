@@ -1,0 +1,99 @@
+---
+title: Conditions & Error Handling
+description: Controlling step execution with if and continue-on-error
+---
+
+## Step Conditions
+
+The `if:` field on a step controls whether it runs, based on the job's current status.
+
+### `success()` (default)
+
+A step with no `if:` field — or with `if: success()` — runs only when no previous step
+in the job has failed:
+
+```yaml
+- name: Runs normally
+  run: echo "all good"
+
+- name: Same behavior, explicit
+  if: success()
+  run: echo "all good"
+```
+
+### `failure()`
+
+Runs only when a previous step has failed:
+
+```yaml
+- name: This will fail
+  run: exit 1
+
+- name: Error handler
+  if: failure()
+  run: echo "Something went wrong"
+```
+
+### `always()`
+
+Runs regardless of prior step status — useful for cleanup:
+
+```yaml
+- name: Might fail
+  run: risky-command
+
+- name: Cleanup
+  if: always()
+  run: rm -rf /tmp/workdir
+```
+
+## `continue-on-error`
+
+When a step has `continue-on-error: true`, a non-zero exit code does not mark the
+job as failed. Subsequent steps still see a `success()` status:
+
+```yaml
+- name: Optional check
+  run: ./optional-lint.sh
+  continue-on-error: true
+
+- name: This still runs
+  run: echo "Lint result doesn't matter"
+```
+
+Without `continue-on-error`, a failing step causes all remaining steps (except those
+with `if: failure()` or `if: always()`) to be skipped, and the job is marked as failed.
+
+## Combining Conditions and continue-on-error
+
+```yaml
+steps:
+  - name: Setup
+    run: echo "setup"
+
+  - name: Flaky test
+    run: ./test.sh
+    continue-on-error: true
+
+  - name: Always report
+    if: always()
+    run: echo "Test completed (may have failed)"
+
+  - name: On success only
+    if: success()
+    run: echo "Everything passed"
+```
+
+In this example:
+- If `test.sh` fails, "Always report" runs, and "On success only" also runs
+  (because `continue-on-error` prevented the job from entering a failed state)
+- If `Setup` fails, "Flaky test" is skipped, "Always report" runs, "On success only"
+  is skipped
+
+## Job-Level Failure
+
+When a step fails (without `continue-on-error`), the job finishes with a `failure`
+status. Any downstream jobs that `needs:` this job are skipped.
+
+See [Job Dependencies](/guides/job-dependencies) for details on failure propagation
+across the DAG.

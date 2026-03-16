@@ -1,0 +1,59 @@
+vmType: "vz"
+nestedVirtualization: true
+
+images:
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-arm64.img"
+    arch: "aarch64"
+  - location: "https://cloud-images.ubuntu.com/releases/24.04/release/ubuntu-24.04-server-cloudimg-amd64.img"
+    arch: "x86_64"
+
+cpus: 4
+memory: "8GiB"
+disk: "50GiB"
+
+mountType: "virtiofs"
+mounts:
+  - location: "~"
+    writable: false
+
+containerd:
+  system: false
+  user: false
+
+provision:
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -eux -o pipefail
+      apt-get update -y
+      apt-get install -y curl wget libcap2-bin cpu-checker
+
+      # Add lima user to kvm group
+      usermod -aG kvm "$(logname)"
+
+      # Install cloud-hypervisor static binary
+      ARCH=$(uname -m)
+      if [ "$ARCH" = "x86_64" ]; then
+        BINARY="cloud-hypervisor-static"
+      else
+        BINARY="cloud-hypervisor-static-aarch64"
+      fi
+
+      wget -q -O /usr/local/bin/cloud-hypervisor \
+        "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/latest/download/${BINARY}"
+      chmod +x /usr/local/bin/cloud-hypervisor
+      setcap cap_net_admin+ep /usr/local/bin/cloud-hypervisor
+
+      cloud-hypervisor --version
+
+probes:
+  - description: "KVM is accessible"
+    script: |
+      #!/bin/bash
+      test -c /dev/kvm
+    hint: "nestedVirtualization may not be supported on this hardware"
+  - description: "cloud-hypervisor is installed"
+    script: |
+      #!/bin/bash
+      command -v cloud-hypervisor
+    hint: "cloud-hypervisor installation failed — check provision logs"

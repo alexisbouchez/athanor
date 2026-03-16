@@ -1,0 +1,68 @@
+---
+title: Step Outputs
+description: Passing data between steps with GITHUB_OUTPUT
+---
+
+## Writing Outputs
+
+Any step with an `id:` can produce key-value outputs by appending to the
+`$GITHUB_OUTPUT` file:
+
+```yaml
+- name: Detect version
+  id: version
+  run: |
+    VER=$(git describe --tags --always)
+    echo "tag=$VER" >> "$GITHUB_OUTPUT"
+```
+
+The format is `key=value`, one per line.
+
+## Reading Outputs
+
+Later steps in the **same job** can read outputs using expression syntax:
+
+```yaml
+- name: Use version
+  run: echo "Building ${{ steps.version.outputs.tag }}"
+```
+
+Athanor replaces `${{ steps.<id>.outputs.<key> }}` with the corresponding value
+before executing the script.
+
+## Multiple Outputs
+
+A single step can write multiple outputs:
+
+```yaml
+- id: meta
+  run: |
+    echo "name=athanor" >> "$GITHUB_OUTPUT"
+    echo "version=0.1.0" >> "$GITHUB_OUTPUT"
+    echo "commit=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+```
+
+```yaml
+- run: echo "${{ steps.meta.outputs.name }} ${{ steps.meta.outputs.version }}"
+```
+
+## How It Works Internally
+
+1. Before each step, athanor creates a temp file and sets the `GITHUB_OUTPUT`
+   environment variable to its path
+2. The step script appends `key=value` lines to this file
+3. After the step exits, athanor reads the file and records the outputs
+4. Expression patterns in subsequent steps are expanded via string replacement
+
+<Info>
+  Only the `$\{{ steps.ID.outputs.KEY }}` expression pattern is currently supported.
+  Full GitHub Actions expression evaluation (`env.*`, `github.*`, functions like
+  `contains()`, `toJSON()`, etc.) is not yet implemented.
+</Info>
+
+## Limitations
+
+- Outputs are scoped to a single job — you cannot reference outputs from a step in
+  a different job
+- Multiline values are not supported (only single-line `key=value`)
+- `$GITHUB_ENV` and `$GITHUB_PATH` are not supported

@@ -1,0 +1,18 @@
+name: Conditions Test
+on: push
+jobs:
+  main:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Always runs
+        if: always()
+        run: echo "always"
+      - name: On success
+        if: success()
+        run: echo "success"
+      - name: This fails
+        run: exit 1
+        continue-on-error: true
+      - name: After failure
+        if: failure()
+        run: echo "failure"

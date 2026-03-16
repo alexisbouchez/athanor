@@ -1,0 +1,122 @@
+---
+title: Writing Workflows
+description: How to author workflows that athanor can execute
+---
+
+Athanor reads standard GitHub Actions workflow YAML. If your workflow only uses `run:`
+steps (no `uses:` actions), it will likely work out of the box.
+
+## Minimal Workflow
+
+Create `.github/workflows/hello.yml`:
+
+```yaml
+name: Hello
+on: push
+jobs:
+  greet:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Say hello
+        run: echo "Hello from athanor!"
+```
+
+Then run it:
+
+```bash
+./bin/athanor --workflow .github/workflows/hello.yml
+```
+
+<Note>
+  The `on:` and `runs-on:` fields are parsed but not used for filtering or
+  runtime selection — athanor runs the workflow on your local machine regardless.
+</Note>
+
+## Adding Environment Variables
+
+Environment variables can be set at three levels. Each level inherits from the one above:
+
+```yaml
+name: Env Demo
+on: push
+env:
+  GLOBAL: from-workflow      # available to all jobs
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      JOB_VAR: from-job      # available to all steps in this job
+    steps:
+      - name: Print vars
+        env:
+          STEP_VAR: from-step # only this step
+        run: |
+          echo "$GLOBAL"
+          echo "$JOB_VAR"
+          echo "$STEP_VAR"
+```
+
+## Passing Data Between Steps
+
+Use `$GITHUB_OUTPUT` to set outputs, then reference them with expression syntax:
+
+```yaml
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate version
+        id: ver
+        run: echo "tag=v1.2.3" >> "$GITHUB_OUTPUT"
+
+      - name: Use version
+        run: echo "Deploying ${{ steps.ver.outputs.tag }}"
+```
+
+<Warning>
+  Step outputs are scoped to a single job. Cross-job output passing is not
+  yet supported.
+</Warning>
+
+## Job Dependencies
+
+Use `needs:` to create a DAG. Jobs at the same depth run concurrently:
+
+```yaml
+jobs:
+  lint:
+    steps:
+      - run: echo "lint"
+  test:
+    needs: lint
+    steps:
+      - run: echo "test"
+  build:
+    needs: lint
+    steps:
+      - run: echo "build"
+  deploy:
+    needs: [test, build]
+    steps:
+      - run: echo "deploy"
+```
+
+This produces the execution order: `lint` → `test` + `build` (parallel) → `deploy`.
+
+## Job Defaults
+
+Set default `shell` and `working-directory` for all steps in a job:
+
+```yaml
+jobs:
+  build:
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./src
+    steps:
+      - run: pwd          # runs in ./src
+      - run: echo "hi"
+        shell: sh         # overrides the default
+```

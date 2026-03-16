@@ -1,0 +1,115 @@
+---
+title: Workflow Features
+description: Overview of all supported GitHub Actions features
+---
+
+Athanor supports a practical subset of GitHub Actions workflow syntax — enough to run
+most CI pipelines that don't depend on marketplace actions.
+
+## `run:` Steps
+
+Every step must have a `run:` field containing a shell script. Multi-line scripts work
+with YAML block scalars:
+
+```yaml
+- name: Multi-line script
+  run: |
+    echo "line 1"
+    echo "line 2"
+    exit 0
+```
+
+Scripts are written to a temp file and executed with `bash` (or the configured `shell:`).
+
+## `shell:` Override
+
+```yaml
+- name: Use sh instead
+  run: echo "hello"
+  shell: sh
+```
+
+Or set a default for the whole job:
+
+```yaml
+jobs:
+  build:
+    defaults:
+      run:
+        shell: sh
+```
+
+## `working-directory:`
+
+Set per-step or as a job default:
+
+```yaml
+- name: Build in subdir
+  run: make build
+  working-directory: ./frontend
+```
+
+Relative paths are resolved against the workflow file's parent directory.
+
+## `env:` at Every Level
+
+Environment variables cascade: workflow → job → step. Each level can override
+variables from the level above.
+
+```yaml
+env:
+  APP: myapp
+jobs:
+  build:
+    env:
+      ENV: production
+    steps:
+      - env:
+          DEBUG: "true"
+        run: echo "$APP $ENV $DEBUG"
+```
+
+## `id:` and `$GITHUB_OUTPUT`
+
+Steps can produce outputs that later steps reference:
+
+```yaml
+- id: check
+  run: echo "status=ready" >> "$GITHUB_OUTPUT"
+- run: echo "${{ steps.check.outputs.status }}"
+```
+
+The `$GITHUB_OUTPUT` file is created per-step and parsed after the step exits.
+
+## `if:` Conditions
+
+Three built-in functions control whether a step runs:
+
+| Condition | Runs when |
+|---|---|
+| `success()` (default) | No previous step in this job has failed |
+| `failure()` | A previous step in this job has failed |
+| `always()` | Always, regardless of prior step status |
+
+```yaml
+- name: Cleanup
+  if: always()
+  run: rm -rf tmp/
+```
+
+## `continue-on-error:`
+
+When `true`, a non-zero exit code from this step does not mark the job as failed,
+and subsequent steps continue executing under `success()` conditions:
+
+```yaml
+- name: Optional lint
+  run: golangci-lint run
+  continue-on-error: true
+- name: This still runs
+  run: echo "lint failure is fine"
+```
+
+## `needs:` Job Dependencies
+
+See the dedicated [Job Dependencies](/guides/job-dependencies) guide.

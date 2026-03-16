@@ -1,0 +1,106 @@
+---
+title: Job Dependencies
+description: Controlling execution order with needs
+---
+
+## The DAG
+
+Jobs in a workflow form a directed acyclic graph (DAG) based on their `needs:` fields.
+Athanor uses Kahn's algorithm to topologically sort jobs into levels. Jobs at the same
+level run concurrently.
+
+## Simple Chain
+
+```yaml
+jobs:
+  first:
+    steps:
+      - run: echo "first"
+  second:
+    needs: first
+    steps:
+      - run: echo "second"
+  third:
+    needs: second
+    steps:
+      - run: echo "third"
+```
+
+Execution: `first` → `second` → `third` (sequential).
+
+## Fan-Out / Fan-In
+
+```yaml
+jobs:
+  lint:
+    steps:
+      - run: echo "lint"
+  test:
+    needs: lint
+    steps:
+      - run: echo "test"
+  build:
+    needs: lint
+    steps:
+      - run: echo "build"
+  deploy:
+    needs: [test, build]
+    steps:
+      - run: echo "deploy"
+```
+
+Execution:
+```
+lint ──┬── test  ──┬── deploy
+       └── build ──┘
+```
+
+`test` and `build` run in parallel after `lint` completes. `deploy` waits for both.
+
+## Failure Propagation
+
+If a job fails, all jobs that depend on it (directly or transitively) are skipped:
+
+```
+lint (fails) ──┬── test  (skipped)
+               └── build (skipped) ── deploy (skipped)
+```
+
+The workflow finishes with a `failure` status.
+
+## Cycle Detection
+
+Circular dependencies are caught at parse time:
+
+```yaml
+jobs:
+  a:
+    needs: b
+    steps:
+      - run: echo "a"
+  b:
+    needs: a
+    steps:
+      - run: echo "b"
+```
+
+This produces an error: `cycle detected in job dependencies`.
+
+## No Dependencies
+
+Jobs with no `needs:` field all run in the first level, concurrently:
+
+```yaml
+jobs:
+  lint:
+    steps:
+      - run: echo "lint"
+  test:
+    steps:
+      - run: echo "test"
+  build:
+    steps:
+      - run: echo "build"
+```
+
+All three start at the same time.

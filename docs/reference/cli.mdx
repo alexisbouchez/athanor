@@ -1,0 +1,63 @@
+---
+title: CLI Reference
+description: Command-line flags and Make targets
+---
+
+## Binary Usage
+
+```bash
+athanor [flags]
+```
+
+### Flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--workflow-dir` | `.github/workflows` | Directory to search for workflow files |
+| `--workflow` | *(none)* | Path to a specific workflow file (skips the selection TUI) |
+
+### Examples
+
+```bash
+# Interactive mode — pick from discovered workflows
+athanor
+
+# Run a specific workflow
+athanor --workflow .github/workflows/ci.yml
+
+# Use a custom workflow directory
+athanor --workflow-dir ./my-workflows
+```
+
+## Make Targets
+
+| Target | Description |
+|---|---|
+| `make build` | Build binary to `bin/athanor` |
+| `make test` | Run all tests |
+| `make vet` | Run `go vet ./...` |
+| `make lint` | Run `golangci-lint` (requires separate install) |
+| `make run` | Build and launch the TUI |
+| `make run-workflow WORKFLOW=path` | Build and run a specific workflow |
+| `make clean` | Remove build artifacts |
+
+### Cross-Compilation
+
+```bash
+make build-linux    # Produces bin/athanor-linux-arm64 and bin/athanor-linux-amd64
+```
+
+### Lima VM (macOS MicroVM Support)
+
+| Target | Description |
+|---|---|
+| `make lima-create` | Create the Lima VM from `lima/athanor.yaml` |
+| `make lima-start` | Start the VM |
+| `make lima-shell` | Open a shell inside the VM |
+| `make lima-stop` | Stop the VM |
+| `make lima-delete` | Delete the VM |
+
+## Exit Behavior
+
+- **Ctrl+C** — cancels the running workflow (kills child processes) and exits
+- **q** or **Enter** — exits after a workflow has finished

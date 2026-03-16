@@ -1,0 +1,31 @@
+name: Uses and Matrix
+on: push
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go: ['1.21', '1.22']
+        exclude:
+          - os: macos-latest
+            go: '1.21'
+        include:
+          - os: ubuntu-latest
+            go: '1.22'
+            experimental: true
+      fail-fast: false
+      max-parallel: 2
+    timeout-minutes: 30
+    outputs:
+      result: ${{ steps.build.outputs.result }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build
+        id: build
+        run: go build ./...
+        timeout-minutes: 10

@@ -1,0 +1,22 @@
+name: CI
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Show environment
+        run: |
+          echo "CI=$CI"
+          echo "Repository: $GITHUB_REPOSITORY"
+          echo "SHA: $GITHUB_SHA"
+          echo "Ref: $GITHUB_REF"
+      - name: Build
+        run: |
+          go version
+          go build ./...
+      - name: Test
+        run: go test ./...
+      - name: Vet
+        run: go vet ./...

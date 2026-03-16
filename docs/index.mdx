@@ -1,0 +1,40 @@
+---
+title: Athanor
+description: The simplest way to self-host GitHub Actions
+---
+
+# Athanor
+
+Athanor parses your `.github/workflows/` YAML files and executes them locally with a
+terminal UI. Test your CI pipelines without pushing — pick a workflow, watch jobs run in
+real time.
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/getting-started/installation">
+    Build from source in one command.
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/getting-started/quickstart">
+    Run your first workflow in under a minute.
+  </Card>
+  <Card title="Writing Workflows" icon="pen" href="/getting-started/writing-workflows">
+    Author workflows that athanor can execute.
+  </Card>
+  <Card title="Supported Features" icon="list-check" href="/reference/supported-features">
+    What subset of GitHub Actions is supported.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+1. Athanor discovers workflow files in `.github/workflows/`
+2. A TUI lets you pick which workflow to run
+3. Jobs are topologically sorted — independent jobs run concurrently
+4. `run:` steps execute via bash with live-streamed output
+5. A split-panel view shows the job/step tree alongside log output
+
+## Why Athanor?
+
+- **Fast feedback** — no push/wait/check cycle, run workflows on your machine
+- **Visual** — a terminal UI shows progress, not raw shell output
+- **Simple** — single binary, no daemon, no Docker, no configuration files beyond the workflow YAML you already have
+- **Future-proof** — the long-term goal is full microVM isolation via CloudHypervisor, but local execution works today

@@ -1,0 +1,92 @@
+---
+title: Architecture
+description: How athanor is structured internally
+---
+
+## Package Layout
+
+```
+cmd/athanor/          CLI entrypoint
+internal/
+  workflow/            YAML parsing and type definitions
+  runner/              Execution engine
+  tui/                 Terminal UI (bubbletea)
+  vmm/                 CloudHypervisor API monitor (future)
+```
+
+## Data Flow
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  workflow/   │────▶│   runner/    │────▶│    tui/     │
+│  ParseFile   │     │   Runner     │     │   Model     │
+└─────────────┘     └──────────────┘     └─────────────┘
+     YAML               RunEvents           tea.Msg
+    parsing             on channel          rendering
+```
+
+1. **workflow/** parses YAML into `Workflow`/`Job`/`Step` structs
+2. **runner/** receives a `*Workflow`, topologically sorts jobs, and executes them
+3. **tui/** receives `RunEvent`s as `tea.Msg` and renders the UI
+
+Each package has a single responsibility. The runner has no TUI imports; the TUI has
+no execution logic.
+
+## Runner ↔ TUI Communication
+
+The runner sends events on a buffered Go channel:
+
+```go
+events := runner.Events()  // <-chan RunEvent
+for event := range events {
+    program.Send(RunEventMsg{Event: event})
+}
+```
+
+The main goroutine in `cmd/athanor` bridges the two: it reads from the runner's channel
+and calls `program.Send()` to inject events into the bubbletea event loop.
+
+### Event Types
+
+| Event | When |
+|---|---|
+| `WorkflowStarted` | Run begins |
+| `JobStarted` | A job begins execution |
+| `StepStarted` | A step begins execution |
+| `StepOutput` | A line of stdout/stderr from a step |
+| `StepFinished` | A step completes (with exit code) |
+| `JobFinished` | A job completes (success/failure/skipped) |
+| `WorkflowFinished` | All jobs done |
+
+## Job Scheduling
+
+Jobs are sorted using **Kahn's algorithm** for topological ordering. The algorithm
+naturally produces "levels" — groups of jobs with no unmet dependencies. Jobs within
+a level are launched as concurrent goroutines.
+
+```
+Level 0: [lint]              ← no dependencies
+Level 1: [test, build]       ← both depend on lint
+Level 2: [deploy]            ← depends on test and build
+```
+
+Each level completes before the next starts.
+
+## Shell Execution
+
+Each `run:` step is:
+
+1. Written to a temp file (`/tmp/athanor-step-*.sh`)
+2. Executed with `exec.CommandContext(ctx, shell, tempfile)`
+3. Stdout and stderr are merged and streamed line-by-line to the runner's event channel
+4. After exit, the `$GITHUB_OUTPUT` temp file is parsed for step outputs
+5. Temp files are cleaned up
+
+`exec.CommandContext` ensures that Ctrl+C cancels the context, which kills child
+processes.
+
+## Future: MicroVM Isolation
+
+The `internal/vmm/` package contains a CloudHypervisor API monitor. The long-term goal
+is to run each job inside a lightweight microVM via CloudHypervisor, providing full
+isolation. On macOS, this requires a Lima VM with nested virtualization and KVM support.

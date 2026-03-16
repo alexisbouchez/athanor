@@ -1,0 +1,21 @@
+name: Env and Outputs
+on: push
+env:
+  GLOBAL_VAR: hello
+jobs:
+  producer:
+    runs-on: ubuntu-latest
+    env:
+      JOB_VAR: world
+    steps:
+      - name: Produce output
+        id: greet
+        run: echo "greeting=hi there" >> "$GITHUB_OUTPUT"
+        env:
+          STEP_VAR: foo
+  consumer:
+    runs-on: ubuntu-latest
+    needs: producer
+    steps:
+      - name: Consume output
+        run: echo "${{ steps.greet.outputs.greeting }}"

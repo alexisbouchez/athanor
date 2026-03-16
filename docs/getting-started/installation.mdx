@@ -1,0 +1,39 @@
+---
+title: Installation
+description: Build athanor from source
+---
+
+## Prerequisites
+
+- **Go 1.25+** — [install Go](https://go.dev/dl/)
+- **bash** — available on macOS and Linux by default
+
+## Build from Source
+
+```bash
+git clone https://github.com/alexj212/athanor.git
+cd athanor
+make build
+```
+
+The binary is written to `bin/athanor`.
+
+## Verify
+
+```bash
+./bin/athanor --help
+```
+
+## Run Tests
+
+```bash
+make test
+```
+
+## Optional: Install Globally
+
+Copy the binary somewhere on your `$PATH`:
+
+```bash
+cp bin/athanor /usr/local/bin/
+```

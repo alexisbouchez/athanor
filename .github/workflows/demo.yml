@@ -1,0 +1,27 @@
+name: Demo Workflow
+on: push
+env:
+  GREETING: hello
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print greeting
+        run: echo "$GREETING from setup"
+      - name: Produce output
+        id: info
+        run: |
+          echo "version=1.0.0" >> "$GITHUB_OUTPUT"
+          echo "Setup complete"
+  build:
+    runs-on: ubuntu-latest
+    needs: setup
+    steps:
+      - name: Use output
+        run: echo "Building version ${{ steps.info.outputs.version }}"
+      - name: Intentional failure
+        run: exit 1
+        continue-on-error: true
+      - name: Always cleanup
+        if: always()
+        run: echo "Cleaning up"

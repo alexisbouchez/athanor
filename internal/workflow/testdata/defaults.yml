@@ -1,0 +1,15 @@
+name: Defaults Test
+on: push
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./src
+    steps:
+      - name: Build
+        run: echo "building"
+      - name: Override shell
+        run: echo "custom"
+        shell: sh

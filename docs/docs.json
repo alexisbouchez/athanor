@@ -1,0 +1,63 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Athanor",
+  "theme": "mint",
+  "colors": {
+    "primary": "#E05D00",
+    "light": "#F28C38",
+    "dark": "#C24D00",
+    "background": {
+      "light": "#FAFAFA",
+      "dark": "#111111"
+    }
+  },
+  "modeToggle": {
+    "default": "dark",
+    "isHidden": false
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/alexj212/athanor"
+    }
+  ],
+  "topbarCtaButton": {
+    "type": "github",
+    "url": "https://github.com/alexj212/athanor"
+  },
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "index",
+        "getting-started/installation",
+        "getting-started/quickstart",
+        "getting-started/writing-workflows"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/workflow-features",
+        "guides/job-dependencies",
+        "guides/step-outputs",
+        "guides/conditions-and-errors"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "reference/cli",
+        "reference/architecture",
+        "reference/supported-features"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/alexj212/athanor"
+  },
+  "feedback": {
+    "suggestEdit": true,
+    "raiseIssue": true
+  }
+}

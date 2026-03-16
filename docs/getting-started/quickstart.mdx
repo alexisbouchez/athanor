@@ -1,0 +1,117 @@
+---
+title: Quick Start
+description: Run your first workflow in under a minute
+---
+
+Athanor ships with example workflows you can try immediately.
+
+## 1. Build
+
+```bash
+make build
+```
+
+## 2. Launch the TUI
+
+```bash
+make run
+```
+
+Athanor discovers all `.yml` and `.yaml` files in `.github/workflows/` and presents a
+selection screen. Use arrow keys to pick a workflow, then press Enter.
+
+## 3. Watch It Run
+
+The execution view has two panels:
+
+- **Left** — job/step tree with live status glyphs (`·` pending, `●` running, `✓` passed, `✗` failed)
+- **Right** — scrollable log output for the active step
+
+When the workflow finishes, press `q` or Enter to exit.
+
+## Run a Specific Workflow
+
+Skip the selection screen by passing a file path directly:
+
+```bash
+./bin/athanor --workflow .github/workflows/self-test.yml
+```
+
+Or via Make:
+
+```bash
+make run-workflow WORKFLOW=.github/workflows/demo.yml
+```
+
+## Example Workflows
+
+The repo includes two workflows:
+
+<AccordionGroup>
+  <Accordion title="self-test.yml — Build and test athanor itself">
+    Runs `go vet`, then `go test` and `go build` in parallel:
+
+    ```
+    vet ──┬── test
+          └── build
+    ```
+
+    ```yaml
+    name: Self Test
+    on: push
+    jobs:
+      vet:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Go vet
+            run: go vet ./...
+      test:
+        runs-on: ubuntu-latest
+        needs: vet
+        steps:
+          - name: Run tests
+            run: go test ./...
+      build:
+        runs-on: ubuntu-latest
+        needs: vet
+        steps:
+          - name: Build binary
+            run: go build -o bin/athanor ./cmd/athanor
+    ```
+  </Accordion>
+
+  <Accordion title="demo.yml — Env vars, outputs, continue-on-error, conditions">
+    Demonstrates environment variables, step outputs via `$GITHUB_OUTPUT`,
+    `continue-on-error: true`, and `if: always()`.
+
+    ```yaml
+    name: Demo Workflow
+    on: push
+    env:
+      GREETING: hello
+    jobs:
+      setup:
+        runs-on: ubuntu-latest
+        steps:
+          - name: Print greeting
+            run: echo "$GREETING from setup"
+          - name: Produce output
+            id: info
+            run: |
+              echo "version=1.0.0" >> "$GITHUB_OUTPUT"
+              echo "Setup complete"
+      build:
+        runs-on: ubuntu-latest
+        needs: setup
+        steps:
+          - name: Use output
+            run: echo "Building version $\{{ steps.info.outputs.version }}"
+          - name: Intentional failure
+            run: exit 1
+            continue-on-error: true
+          - name: Always cleanup
+            if: always()
+            run: echo "Cleaning up"
+    ```
+  </Accordion>
+</AccordionGroup>
