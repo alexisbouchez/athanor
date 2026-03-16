@@ -386,6 +386,10 @@ func (r *Runner) runRunStep(ctx context.Context, jobID string, stepIdx int, step
 	if workDir != "" && !filepath.IsAbs(workDir) && r.runCtx.GitHub.Workspace != "" {
 		workDir = filepath.Join(r.runCtx.GitHub.Workspace, workDir)
 	}
+	// Default to workspace if no working directory specified
+	if workDir == "" && r.runCtx.GitHub.Workspace != "" {
+		workDir = r.runCtx.GitHub.Workspace
+	}
 
 	// Create temp files for GITHUB_OUTPUT, GITHUB_ENV, GITHUB_PATH, GITHUB_STEP_SUMMARY
 	outputFile, err := os.CreateTemp("", "athanor-output-*")
