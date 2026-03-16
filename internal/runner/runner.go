@@ -261,14 +261,18 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 	rc.Steps = make(map[string]StepContext)
 	rc.Job = JobContext{Status: "success"}
 
-	// Merge workflow + job env into context env
-	rc.Env = make(map[string]string)
+	// Merge workflow + job env into context env (preserve existing, e.g. secrets)
+	env2 := make(map[string]string, len(rc.Env)+len(r.wf.Env)+len(job.Env))
+	for k, v := range rc.Env {
+		env2[k] = v
+	}
 	for k, v := range r.wf.Env {
-		rc.Env[k] = v
+		env2[k] = v
 	}
 	for k, v := range job.Env {
-		rc.Env[k] = v
+		env2[k] = v
 	}
+	rc.Env = env2
 
 	// Handle reusable workflow (job with uses: instead of steps:)
 	if job.Uses != "" {
