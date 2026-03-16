@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/alexj212/athanor/internal/runner"
+	"github.com/alexj212/athanor/internal/vmm"
 	"github.com/alexj212/athanor/internal/workflow"
 )
 
@@ -25,20 +26,40 @@ type Job struct {
 
 // Worker processes jobs sequentially.
 type Worker struct {
-	queue  chan Job
-	cfg    *Config
-	gh     *GitHubClient
-	logger *log.Logger
+	queue     chan Job
+	cfg       *Config
+	gh        *GitHubClient
+	logger    *log.Logger
+	lifecycle runner.JobLifecycle
 }
 
 // NewWorker creates a new job worker.
 func NewWorker(cfg *Config, gh *GitHubClient, logger *log.Logger) *Worker {
-	return &Worker{
+	w := &Worker{
 		queue:  make(chan Job, 32),
 		cfg:    cfg,
 		gh:     gh,
 		logger: logger,
 	}
+
+	// Set up VM lifecycle if configured
+	if cfg.UseVMs() {
+		os.MkdirAll(cfg.VMDiskDir, 0o755)
+		network := vmm.NewNetwork("br0")
+		w.lifecycle = vmm.NewVMJobLifecycle(vmm.VMJobConfig{
+			KernelPath: cfg.KernelPath,
+			RootfsPath: cfg.RootfsPath,
+			SSHKeyPath: cfg.SSHKeyPath,
+			DiskDir:    cfg.VMDiskDir,
+			CPUs:       cfg.VMCPUs,
+			MemoryMB:   cfg.VMMemoryMB,
+		}, network)
+		logger.Printf("VM mode enabled (kernel=%s, rootfs=%s)", cfg.KernelPath, cfg.RootfsPath)
+	} else {
+		logger.Printf("Running in direct mode (no VMs)")
+	}
+
+	return w
 }
 
 // Start begins processing jobs. Blocks until ctx is cancelled.
@@ -136,7 +157,12 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		}
 
 		runCtx := runner.NewRunContextWith(ghCtx)
-		r := runner.NewRunnerWithContext(wf, runCtx)
+		var r *runner.Runner
+		if w.lifecycle != nil {
+			r = runner.NewRunnerWithLifecycle(wf, runCtx, w.lifecycle)
+		} else {
+			r = runner.NewRunnerWithContext(wf, runCtx)
+		}
 		go r.Run(ctx)
 
 		// Drain events, capture final status

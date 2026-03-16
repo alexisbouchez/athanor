@@ -54,12 +54,22 @@ func (StepFinished) runEvent()     {}
 func (JobFinished) runEvent()      {}
 func (WorkflowFinished) runEvent() {}
 
+// JobLifecycle manages per-job setup and teardown (e.g., spinning up a microVM).
+type JobLifecycle interface {
+	// Setup prepares the execution environment for a job.
+	// Returns the exec function to use, the workspace path inside the environment, and an error.
+	Setup(ctx context.Context, jobID string, hostWorkspace string) (ExecStepFunc, string, error)
+	// Teardown cleans up after a job completes.
+	Teardown(ctx context.Context, jobID string) error
+}
+
 // Runner executes a workflow.
 type Runner struct {
-	wf      *workflow.Workflow
-	events  chan RunEvent
-	exec    ExecStepFunc
-	runCtx  *RunContext
+	wf        *workflow.Workflow
+	events    chan RunEvent
+	exec      ExecStepFunc
+	runCtx    *RunContext
+	lifecycle JobLifecycle
 }
 
 // NewRunner creates a runner for the given workflow.
@@ -79,6 +89,17 @@ func NewRunnerWithContext(wf *workflow.Workflow, runCtx *RunContext) *Runner {
 		events: make(chan RunEvent, 256),
 		exec:   ExecStep,
 		runCtx: runCtx,
+	}
+}
+
+// NewRunnerWithLifecycle creates a runner with a VM lifecycle manager.
+func NewRunnerWithLifecycle(wf *workflow.Workflow, runCtx *RunContext, lc JobLifecycle) *Runner {
+	return &Runner{
+		wf:        wf,
+		events:    make(chan RunEvent, 256),
+		exec:      ExecStep,
+		runCtx:    runCtx,
+		lifecycle: lc,
 	}
 }
 
@@ -210,6 +231,24 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 	}
 
 	r.events <- JobStarted{JobID: jobID}
+
+	// Set up per-job lifecycle (e.g., spin up a microVM)
+	execFn := r.exec
+	if r.lifecycle != nil {
+		fn, vmWorkspace, err := r.lifecycle.Setup(ctx, jobID, r.runCtx.GitHub.Workspace)
+		if err != nil {
+			r.events <- JobFinished{JobID: jobID, Status: "failure"}
+			return &JobResult{Status: "failure"}
+		}
+		execFn = fn
+		defer r.lifecycle.Teardown(ctx, jobID)
+		// Override workspace to the VM-side path
+		r.runCtx.GitHub.Workspace = vmWorkspace
+	}
+	// Use lifecycle-provided exec function for this job
+	origExec := r.exec
+	r.exec = execFn
+	defer func() { r.exec = origExec }()
 
 	// Set up run context for this job
 	rc := *r.runCtx // copy

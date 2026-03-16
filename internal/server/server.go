@@ -20,6 +20,19 @@ type Config struct {
 	WebhookSecret string
 	GitHubToken   string
 	WorkspaceDir  string // default "/var/lib/athanor/workspaces"
+
+	// VM configuration (empty KernelPath disables VM mode)
+	KernelPath string
+	RootfsPath string
+	SSHKeyPath string
+	VMDiskDir  string
+	VMCPUs     int
+	VMMemoryMB int
+}
+
+// UseVMs returns true if VM mode is configured.
+func (c *Config) UseVMs() bool {
+	return c.KernelPath != ""
 }
 
 // LoadConfig reads configuration from environment variables.
@@ -29,6 +42,12 @@ func LoadConfig() (*Config, error) {
 		WebhookSecret: os.Getenv("WEBHOOK_SECRET"),
 		GitHubToken:   os.Getenv("GITHUB_TOKEN"),
 		WorkspaceDir:  envOr("WORKSPACE_DIR", "/var/lib/athanor/workspaces"),
+		KernelPath:    os.Getenv("KERNEL_PATH"),
+		RootfsPath:    envOr("ROOTFS_PATH", "/var/lib/athanor/rootfs.ext4"),
+		SSHKeyPath:    envOr("SSH_KEY_PATH", "/var/lib/athanor/vm-ssh-key"),
+		VMDiskDir:     envOr("VM_DISK_DIR", "/var/lib/athanor/vm-disks"),
+		VMCPUs:        envOrInt("VM_CPUS", 2),
+		VMMemoryMB:    envOrInt("VM_MEMORY_MB", 2048),
 	}
 	if cfg.WebhookSecret == "" {
 		return nil, fmt.Errorf("WEBHOOK_SECRET environment variable is required")
@@ -44,6 +63,19 @@ func envOr(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func envOrInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	var n int
+	fmt.Sscanf(v, "%d", &n)
+	if n <= 0 {
+		return fallback
+	}
+	return n
 }
 
 // Server is the webhook HTTP server.
