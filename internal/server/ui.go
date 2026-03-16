@@ -5,6 +5,7 @@ const indexHTML = `<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
 <title>athanor</title>
 <style>
 @font-face {
@@ -20,29 +21,105 @@ const indexHTML = `<!DOCTYPE html>
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
+:root {
+  --bg: #f5f5f4;
+  --fg: #1c1c1c;
+  --fg2: #444;
+  --fg3: #777;
+  --border: #d4d4d4;
+  --run-bg: #fff;
+  --green: #1a7f37;
+  --red: #cf222e;
+  --blue: #0969da;
+  --muted: #8b8b8b;
+  --empty: #999;
+  --toggle-bg: #e5e5e5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0d0d0d;
+    --fg: #e5e5e5;
+    --fg2: #b0b0b0;
+    --fg3: #888;
+    --border: #2a2a2a;
+    --run-bg: #141414;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --muted: #6e6e6e;
+    --empty: #555;
+    --toggle-bg: #222;
+  }
+}
+
+html[data-theme="light"] {
+  --bg: #f5f5f4;
+  --fg: #1c1c1c;
+  --fg2: #444;
+  --fg3: #777;
+  --border: #d4d4d4;
+  --run-bg: #fff;
+  --green: #1a7f37;
+  --red: #cf222e;
+  --blue: #0969da;
+  --muted: #8b8b8b;
+  --empty: #999;
+  --toggle-bg: #e5e5e5;
+}
+
+html[data-theme="dark"] {
+  --bg: #0d0d0d;
+  --fg: #e5e5e5;
+  --fg2: #b0b0b0;
+  --fg3: #888;
+  --border: #2a2a2a;
+  --run-bg: #141414;
+  --green: #3fb950;
+  --red: #f85149;
+  --blue: #58a6ff;
+  --muted: #6e6e6e;
+  --empty: #555;
+  --toggle-bg: #222;
+}
+
 body {
   font-family: 'Ioskeley Mono', monospace;
-  background: #0a0a0a;
-  color: #c8c8c8;
+  background: var(--bg);
+  color: var(--fg);
   padding: 2rem;
   font-size: 14px;
   line-height: 1.6;
 }
 
-h1 {
-  color: #e0e0e0;
-  font-size: 18px;
+header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
   margin-bottom: 0.25rem;
 }
 
+h1 { font-size: 18px; }
+
+.toggle {
+  background: var(--toggle-bg);
+  border: 1px solid var(--border);
+  color: var(--fg3);
+  font-family: inherit;
+  font-size: 12px;
+  padding: 2px 10px;
+  cursor: pointer;
+}
+
 .subtitle {
-  color: #555;
+  color: var(--fg3);
   margin-bottom: 2rem;
   font-size: 12px;
 }
 
 .run {
-  border: 1px solid #222;
+  border: 1px solid var(--border);
+  background: var(--run-bg);
   margin-bottom: 1rem;
   padding: 1rem;
 }
@@ -54,10 +131,10 @@ h1 {
   margin-bottom: 0.5rem;
 }
 
-.run-sha { color: #888; }
-.run-ref { color: #666; }
-.run-actor { color: #666; font-size: 12px; }
-.run-time { color: #555; font-size: 12px; }
+.run-sha { color: var(--fg2); font-weight: 700; }
+.run-ref { color: var(--fg3); }
+.run-actor { color: var(--fg3); font-size: 12px; }
+.run-time { color: var(--muted); font-size: 12px; }
 
 .status {
   display: inline-block;
@@ -65,68 +142,62 @@ h1 {
   font-size: 12px;
   font-weight: 700;
 }
-.status-success { color: #4a4; }
-.status-failure { color: #c44; }
-.status-running { color: #4ac; }
-.status-pending { color: #666; }
-.status-error   { color: #c44; }
-.status-skipped { color: #555; font-style: italic; }
+.status-success { color: var(--green); }
+.status-failure { color: var(--red); }
+.status-running { color: var(--blue); }
+.status-pending { color: var(--muted); }
+.status-error   { color: var(--red); }
+.status-skipped { color: var(--muted); font-style: italic; }
 
-.workflow {
-  margin: 0.5rem 0 0.5rem 1rem;
-}
+.workflow { margin: 0.5rem 0 0.5rem 1rem; }
+.workflow-name { font-weight: 700; font-size: 13px; }
+.job { margin: 0.25rem 0 0.25rem 1rem; }
+.job-id { color: var(--fg2); }
+.step { margin-left: 1rem; color: var(--fg3); font-size: 12px; }
+.step .glyph { display: inline-block; width: 14px; text-align: center; }
 
-.workflow-name {
-  font-weight: 700;
-  font-size: 13px;
-}
+.g-success { color: var(--green); }
+.g-failure { color: var(--red); }
+.g-running { color: var(--blue); }
+.g-pending { color: var(--muted); }
+.g-skipped { color: var(--muted); }
 
-.job {
-  margin: 0.25rem 0 0.25rem 1rem;
-}
+.empty { color: var(--empty); padding: 2rem 0; text-align: center; }
 
-.job-id { color: #999; }
-
-.step {
-  margin-left: 1rem;
-  color: #777;
-  font-size: 12px;
-}
-
-.step .glyph {
-  display: inline-block;
-  width: 14px;
-  text-align: center;
-}
-
-.g-success { color: #4a4; }
-.g-failure { color: #c44; }
-.g-running { color: #4ac; }
-.g-pending { color: #444; }
-.g-skipped { color: #444; }
-
-.empty {
-  color: #444;
-  padding: 2rem 0;
-  text-align: center;
-}
-
-.blink {
-  animation: blink 1s step-end infinite;
-}
-@keyframes blink {
-  50% { opacity: 0.3; }
-}
+.blink { animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0.3; } }
 </style>
 </head>
 <body>
 
-<h1>athanor</h1>
+<header>
+  <h1>athanor</h1>
+  <button class="toggle" onclick="toggleTheme()" id="themeBtn"></button>
+</header>
 <p class="subtitle">self-hosted ci &middot; cloudhypervisor microvms</p>
 
 <div id="runs"></div>
 
 <script>
+function getTheme() {
+  const saved = localStorage.getItem('theme');
+  if (saved) return saved;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  document.getElementById('themeBtn').textContent = t === 'dark' ? 'light' : 'dark';
+}
+
+function toggleTheme() {
+  const next = getTheme() === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('theme', next);
+  applyTheme(next);
+}
+
+applyTheme(getTheme());
+
 const G = {
   success: '<span class="glyph g-success">&#10003;</span>',
   failure: '<span class="glyph g-failure">&#10007;</span>',
@@ -201,18 +272,11 @@ function render(runs) {
   el.innerHTML = runs.map(renderRun).join('');
 }
 
-// Initial load
-fetch('/api/runs')
-  .then(r => r.json())
-  .then(render);
+fetch('/api/runs').then(r => r.json()).then(render);
 
-// Live updates via SSE
 const es = new EventSource('/api/events');
 es.onmessage = function(e) {
-  // On any update, re-fetch the full list (simple approach)
-  fetch('/api/runs')
-    .then(r => r.json())
-    .then(render);
+  fetch('/api/runs').then(r => r.json()).then(render);
 };
 </script>
 </body>
