@@ -55,7 +55,32 @@ func NewVMJobLifecycle(cfg VMJobConfig, network *Network) *VMJobLifecycle {
 	if maxVMs < 1 {
 		maxVMs = 1
 	}
-	log.New(os.Stderr, "[vmm] ", log.LstdFlags).Printf("Max parallel VMs: %d", maxVMs)
+	logger := log.New(os.Stderr, "[vmm] ", log.LstdFlags)
+	logger.Printf("Max parallel VMs: %d", maxVMs)
+
+	// Startup cleanup: kill orphaned cloud-hypervisor/virtiofsd, delete stale TAPs and disks
+	exec.Command("pkill", "-f", "cloud-hypervisor.*athanor").Run()
+	exec.Command("pkill", "-f", "virtiofsd.*athanor").Run()
+	// Clean stale TAP devices
+	if out, err := exec.Command("ip", "-o", "link", "show").Output(); err == nil {
+		for _, line := range strings.Split(string(out), "\n") {
+			if idx := strings.Index(line, "tap-"); idx >= 0 {
+				end := strings.IndexAny(line[idx:], " :@")
+				if end > 0 {
+					tap := line[idx : idx+end]
+					logger.Printf("Cleaning stale TAP: %s", tap)
+					exec.Command("ip", "link", "delete", tap).Run()
+				}
+			}
+		}
+	}
+	// Clean stale disk copies
+	if entries, err := os.ReadDir(cfg.DiskDir); err == nil {
+		for _, e := range entries {
+			os.Remove(filepath.Join(cfg.DiskDir, e.Name()))
+		}
+	}
+
 	return &VMJobLifecycle{
 		cfg:     cfg,
 		network: network,
@@ -78,13 +103,22 @@ func (l *VMJobLifecycle) Setup(ctx context.Context, jobID string, hostWorkspace 
 	// Sanitize job ID for use in filenames
 	safeID := sanitizeID(jobID)
 
+	// On any setup failure, release the semaphore slot
+	setupFailed := true
+	defer func() {
+		if setupFailed {
+			<-l.sem
+		}
+	}()
+
 	// 1. Copy rootfs for this VM
 	diskPath := filepath.Join(l.cfg.DiskDir, fmt.Sprintf("rootfs-%s.ext4", safeID))
 	if err := copyFile(l.cfg.RootfsPath, diskPath); err != nil {
 		return nil, "", fmt.Errorf("copying rootfs: %w", err)
 	}
 
-	// 2. Allocate network
+	// 2. Allocate network — delete stale TAP if it exists from a previous crash
+	l.network.FreeTap(ctx, safeID) // ignore error
 	tapName, ipAddr, err := l.network.AllocateTap(ctx, safeID)
 	if err != nil {
 		os.Remove(diskPath)
@@ -141,6 +175,7 @@ func (l *VMJobLifecycle) Setup(ctx context.Context, jobID string, hostWorkspace 
 	l.mu.Unlock()
 
 	l.logger.Printf("VM ready for job %s (IP=%s)", jobID, ipAddr)
+	setupFailed = false
 
 	// Return SSH executor and VM-side workspace path
 	sshAddr := ipAddr + ":22"
