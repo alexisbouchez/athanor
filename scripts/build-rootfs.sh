@@ -9,7 +9,7 @@ ROOTFS_DIR="/tmp/athanor-rootfs"
 IMAGE_PATH="/var/lib/athanor/rootfs.ext4"
 IMAGE_SIZE_MB=4096
 SSH_KEY_PATH="/var/lib/athanor/vm-ssh-key"
-GO_VERSION="1.25.6"
+GO_VERSION="1.26.1"
 
 echo "=== Building Athanor CI rootfs ==="
 
