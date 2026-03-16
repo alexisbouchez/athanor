@@ -46,16 +46,32 @@ type Sender struct {
 
 // GitHubClient talks to the GitHub API (Checks API + commit statuses).
 type GitHubClient struct {
-	token      string
+	token      string   // static PAT (fallback)
+	app        *GitHubApp // GitHub App for Checks API (preferred)
 	httpClient *http.Client
 }
 
-// NewGitHubClient creates a new GitHub API client.
+// NewGitHubClient creates a new GitHub API client with a PAT.
 func NewGitHubClient(token string) *GitHubClient {
 	return &GitHubClient{
 		token:      token,
 		httpClient: &http.Client{},
 	}
+}
+
+// SetApp configures a GitHub App for Checks API authentication.
+func (c *GitHubClient) SetApp(app *GitHubApp) {
+	c.app = app
+}
+
+// getToken returns the best available token. Prefers App token for Checks API.
+func (c *GitHubClient) getToken(ctx context.Context) string {
+	if c.app != nil {
+		if token, err := c.app.Token(ctx); err == nil {
+			return token
+		}
+	}
+	return c.token
 }
 
 // --- Checks API (standard way to report CI with logs) ---
@@ -138,7 +154,7 @@ func (c *GitHubClient) apiDo(ctx context.Context, method, url string, body any, 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "token "+c.token)
+	req.Header.Set("Authorization", "token "+c.getToken(ctx))
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Content-Type", "application/json")
 

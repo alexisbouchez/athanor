@@ -1,40 +1,48 @@
 ---
 title: Athanor
-description: The simplest way to self-host GitHub Actions
+description: Self-hosted GitHub Actions with CloudHypervisor microVMs
 ---
 
 # Athanor
 
-Athanor parses your `.github/workflows/` YAML files and executes them locally with a
-terminal UI. Test your CI pipelines without pushing — pick a workflow, watch jobs run in
-real time.
+Athanor is a self-hosted CI engine that runs your GitHub Actions workflows inside ephemeral CloudHypervisor microVMs. Push to GitHub, and athanor receives the webhook, spins up an isolated VM, runs your workflow, and reports the results back — with full logs.
 
 <CardGroup cols={2}>
   <Card title="Installation" icon="download" href="/getting-started/installation">
-    Build from source in one command.
+    Build from source and deploy to a server.
   </Card>
   <Card title="Quick Start" icon="rocket" href="/getting-started/quickstart">
-    Run your first workflow in under a minute.
+    Get a CI server running in minutes.
   </Card>
-  <Card title="Writing Workflows" icon="pen" href="/getting-started/writing-workflows">
-    Author workflows that athanor can execute.
+  <Card title="GitHub App Setup" icon="key" href="/guides/github-app">
+    Enable the Checks API for full log output on GitHub.
   </Card>
-  <Card title="Supported Features" icon="list-check" href="/reference/supported-features">
-    What subset of GitHub Actions is supported.
+  <Card title="Architecture" icon="sitemap" href="/reference/architecture">
+    How webhooks, VMs, and the runner fit together.
   </Card>
 </CardGroup>
 
 ## How It Works
 
-1. Athanor discovers workflow files in `.github/workflows/`
-2. A TUI lets you pick which workflow to run
-3. Jobs are topologically sorted — independent jobs run concurrently
-4. `run:` steps execute via bash with live-streamed output
-5. A split-panel view shows the job/step tree alongside log output
+1. You push code to GitHub
+2. GitHub sends a webhook to your athanor server
+3. Athanor clones the repo and discovers matching workflows
+4. For each job, a CloudHypervisor microVM boots (~4 seconds to SSH)
+5. Steps execute inside the VM via SSH, with the workspace shared via virtiofs
+6. Logs are collected per-step and streamed to the web dashboard in real time
+7. Results are reported back to GitHub via the Checks API (with full logs) and commit statuses
+8. The VM is destroyed
 
-## Why Athanor?
+## Two Modes
 
-- **Fast feedback** — no push/wait/check cycle, run workflows on your machine
-- **Visual** — a terminal UI shows progress, not raw shell output
-- **Simple** — single binary, no daemon, no Docker, no configuration files beyond the workflow YAML you already have
-- **Future-proof** — the long-term goal is full microVM isolation via CloudHypervisor, but local execution works today
+**Server mode** — receives GitHub webhooks, runs workflows in microVMs, reports results. This is how you self-host CI.
+
+```bash
+athanor serve
+```
+
+**Local mode** — runs workflows on your machine with a terminal UI. Useful for testing workflows before pushing.
+
+```bash
+athanor --workflow .github/workflows/ci.yml
+```

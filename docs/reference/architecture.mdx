@@ -6,47 +6,94 @@ description: How athanor is structured internally
 ## Package Layout
 
 ```
-cmd/athanor/          CLI entrypoint
+cmd/athanor/          CLI entrypoint (local TUI + server mode)
 internal/
   workflow/            YAML parsing and type definitions
-  runner/              Execution engine
+  runner/              Execution engine (job scheduling, step dispatch)
+  expr/                GitHub Actions expression evaluator
+  action/              Action resolution, caching, composite execution
+  server/              Webhook server, GitHub API, web dashboard, run store
   tui/                 Terminal UI (bubbletea)
-  vmm/                 CloudHypervisor API monitor (future)
+  vmm/                 CloudHypervisor VM lifecycle, networking, SSH executor
 ```
 
-## Data Flow
+## Server Mode Data Flow
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  workflow/   │────▶│   runner/    │────▶│    tui/     │
-│  ParseFile   │     │   Runner     │     │   Model     │
-└─────────────┘     └──────────────┘     └─────────────┘
-     YAML               RunEvents           tea.Msg
-    parsing             on channel          rendering
+GitHub webhook POST
+       |
+       v
+  server/server.go      HTTP handler, signature validation
+       |
+       v
+  server/worker.go      Job queue, clone/fetch, workflow discovery
+       |
+       v
+  vmm/lifecycle.go      Spin up microVM (CH + virtiofs + TAP)
+       |
+       v
+  runner/runner.go       Execute workflow (topo sort, step loop)
+       |
+       v
+  vmm/ssh.go            Run steps inside VM via SSH
+       |
+       v
+  server/store.go        Collect logs, update run state
+       |
+       v
+  server/github.go       Report to GitHub (Checks API + commit statuses)
+  server/ui.go           Serve web dashboard (SSE live updates)
 ```
 
-1. **workflow/** parses YAML into `Workflow`/`Job`/`Step` structs
-2. **runner/** receives a `*Workflow`, topologically sorts jobs, and executes them
-3. **tui/** receives `RunEvent`s as `tea.Msg` and renders the UI
+## Local Mode Data Flow
 
-Each package has a single responsibility. The runner has no TUI imports; the TUI has
-no execution logic.
-
-## Runner ↔ TUI Communication
-
-The runner sends events on a buffered Go channel:
-
-```go
-events := runner.Events()  // <-chan RunEvent
-for event := range events {
-    program.Send(RunEventMsg{Event: event})
-}
+```
+  workflow/ParseFile     Parse YAML
+       |
+       v
+  runner/Runner          Execute workflow locally
+       |
+       v
+  tui/Model              Render split-panel TUI
 ```
 
-The main goroutine in `cmd/athanor` bridges the two: it reads from the runner's channel
-and calls `program.Send()` to inject events into the bubbletea event loop.
+## MicroVM Lifecycle
 
-### Event Types
+Each CI job runs inside an ephemeral CloudHypervisor microVM:
+
+```
+1. Copy rootfs image       (ext4, ~4GB)
+2. Allocate TAP device     (attached to br0 bridge)
+3. Start virtiofsd         (shares workspace dir)
+4. Start cloud-hypervisor  (API socket, kernel, rootfs, net, virtiofs)
+5. PUT /api/v1/vm.create   (send config)
+6. PUT /api/v1/vm.boot     (boot the VM)
+7. Wait for SSH            (~4 seconds total boot time)
+8. Execute steps via SSH   (each step = new SSH session)
+9. PUT /api/v1/vm.shutdown (graceful shutdown)
+10. Kill processes         (CH, virtiofsd)
+11. Free TAP device
+12. Delete rootfs copy
+```
+
+The workspace is shared bidirectionally via **virtiofs** — the host clones the repo, and the VM sees it at `/workspace`.
+
+Networking uses a **TAP device** attached to a Linux bridge (`br0`) with NAT, giving VMs full internet access for downloading dependencies.
+
+## Expression Engine
+
+The `internal/expr/` package implements a full GitHub Actions expression evaluator:
+
+- **Lexer** — tokenizes expression contents inside `${{ }}`
+- **Parser** — recursive descent producing an AST
+- **Evaluator** — tree-walking with GitHub Actions truthiness rules
+- **Interpolation** — finds `${{ }}` delimiters, evaluates, splices results
+
+Supports: context access (`github.sha`), operators (`==`, `!=`, `&&`, `||`, `!`), functions (`contains`, `startsWith`, `format`, `join`, `toJSON`, `fromJSON`, `success`, `failure`, `always`, `cancelled`), index access (`matrix['os']`).
+
+## Runner Events
+
+The runner communicates via a buffered Go channel of typed events:
 
 | Event | When |
 |---|---|
@@ -58,35 +105,39 @@ and calls `program.Send()` to inject events into the bubbletea event loop.
 | `JobFinished` | A job completes (success/failure/skipped) |
 | `WorkflowFinished` | All jobs done |
 
+In server mode, the worker drains these events into the `RunStore`, which notifies SSE subscribers for the web dashboard and builds the log output for the GitHub Checks API.
+
+## GitHub Integration
+
+Athanor uses two GitHub APIs:
+
+**Checks API** (requires GitHub App) — creates a check run per workflow with full Markdown-formatted log output. Each job and step appears with its status and output in a code block. GitHub displays this in the check run details view.
+
+**Commit Statuses** (works with PAT) — sets a single `athanor` status on the commit. Always set as a fallback.
+
+Authentication for the Checks API uses standard GitHub App JWT flow:
+1. Sign a JWT with the app's RSA private key
+2. Exchange it for a short-lived installation token
+3. Use the token for API calls
+4. Cache and refresh automatically
+
 ## Job Scheduling
 
-Jobs are sorted using **Kahn's algorithm** for topological ordering. The algorithm
-naturally produces "levels" — groups of jobs with no unmet dependencies. Jobs within
-a level are launched as concurrent goroutines.
+Jobs are sorted using **Kahn's algorithm** for topological ordering, producing levels of parallelizable jobs. Matrix jobs are expanded into virtual jobs before sorting.
 
 ```
-Level 0: [lint]              ← no dependencies
-Level 1: [test, build]       ← both depend on lint
-Level 2: [deploy]            ← depends on test and build
+Level 0: [lint]              <- no dependencies
+Level 1: [test, build]       <- both depend on lint
+Level 2: [deploy]            <- depends on test and build
 ```
 
-Each level completes before the next starts.
+## Action Support
 
-## Shell Execution
+The `internal/action/` package handles `uses:` steps:
 
-Each `run:` step is:
-
-1. Written to a temp file (`/tmp/athanor-step-*.sh`)
-2. Executed with `exec.CommandContext(ctx, shell, tempfile)`
-3. Stdout and stderr are merged and streamed line-by-line to the runner's event channel
-4. After exit, the `$GITHUB_OUTPUT` temp file is parsed for step outputs
-5. Temp files are cleaned up
-
-`exec.CommandContext` ensures that Ctrl+C cancels the context, which kills child
-processes.
-
-## Future: MicroVM Isolation
-
-The `internal/vmm/` package contains a CloudHypervisor API monitor. The long-term goal
-is to run each job inside a lightweight microVM via CloudHypervisor, providing full
-isolation. On macOS, this requires a Lima VM with nested virtualization and KVM support.
+1. **Resolve** — parse `owner/repo@version`, `./local/path`, or `docker://image`
+2. **Builtins** — `actions/checkout` has a built-in shim (git checkout)
+3. **Cache** — clone action repos to `~/.cache/athanor/actions/`
+4. **Metadata** — parse `action.yml` for inputs, outputs, runs
+5. **Composite** — execute composite action steps inline
+6. **Node** — execute Node.js actions via `node` (if available)

@@ -1,39 +1,150 @@
 ---
 title: Installation
-description: Build athanor from source
+description: Build athanor and deploy it to a server
 ---
 
 ## Prerequisites
 
 - **Go 1.25+** — [install Go](https://go.dev/dl/)
-- **bash** — available on macOS and Linux by default
+- A **Linux server** with KVM support (for microVM mode)
 
 ## Build from Source
 
 ```bash
-git clone https://github.com/alexj212/athanor.git
+git clone https://github.com/alexisbouchez/athanor.git
 cd athanor
 make build
 ```
 
 The binary is written to `bin/athanor`.
 
-## Verify
+## Cross-Compile for Linux
+
+If you're building on macOS for a Linux server:
 
 ```bash
-./bin/athanor --help
+make build-linux
+```
+
+Produces `bin/athanor-linux-amd64` and `bin/athanor-linux-arm64`.
+
+## Deploy to a Server
+
+Copy the binary to your server:
+
+```bash
+scp bin/athanor-linux-amd64 root@your-server:/usr/local/bin/athanor
+```
+
+### Server Requirements
+
+Your server needs:
+
+| Requirement | Minimum | Notes |
+|---|---|---|
+| KVM | `/dev/kvm` present | Required for CloudHypervisor |
+| RAM | 4 GB | ~1 GB per concurrent VM |
+| Disk | 20 GB | ~4 GB for the rootfs image |
+| OS | Ubuntu 22.04+ | Tested on Ubuntu 24.04 |
+| Network | Public IP | For receiving GitHub webhooks |
+
+### Automated Setup
+
+The repo includes a setup script that installs all dependencies:
+
+```bash
+# On the server
+sudo ./scripts/setup-vps.sh
+```
+
+This installs:
+- **cloud-hypervisor** — the VMM
+- **virtiofsd** — virtiofs daemon for workspace sharing
+- **Go** — for running workflows that need it
+- Network bridge + NAT for VM internet access
+- Rootfs image (Ubuntu 24.04 with Go, git, SSH)
+
+### Manual Setup
+
+If you prefer to set things up yourself:
+
+1. Install cloud-hypervisor:
+```bash
+curl -sL "https://github.com/cloud-hypervisor/cloud-hypervisor/releases/download/v45.0/cloud-hypervisor-static" \
+    -o /usr/local/bin/cloud-hypervisor
+chmod +x /usr/local/bin/cloud-hypervisor
+```
+
+2. Install virtiofsd:
+```bash
+apt install virtiofsd
+ln -sf /usr/libexec/virtiofsd /usr/local/bin/virtiofsd
+```
+
+3. Set up the network bridge:
+```bash
+ip link add br0 type bridge
+ip addr add 192.168.100.1/24 dev br0
+ip link set br0 up
+sysctl -w net.ipv4.ip_forward=1
+iptables -t nat -A POSTROUTING -s 192.168.100.0/24 ! -o br0 -j MASQUERADE
+```
+
+4. Copy the host kernel for VMs:
+```bash
+cp /boot/vmlinuz-$(uname -r) /var/lib/athanor/vmlinux
+chmod 644 /var/lib/athanor/vmlinux
+```
+
+5. Build the rootfs:
+```bash
+sudo ./scripts/build-rootfs.sh
+```
+
+6. Generate an SSH key pair for VM access:
+```bash
+ssh-keygen -t ed25519 -f /var/lib/athanor/vm-ssh-key -N "" -C "athanor-vm"
+```
+
+### Systemd Service
+
+Install the service file:
+
+```bash
+cp deploy/athanor.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable athanor
+```
+
+Create the config file at `/etc/athanor/env`:
+
+```bash
+mkdir -p /etc/athanor
+cat > /etc/athanor/env << 'EOF'
+GITHUB_TOKEN=ghp_your_token_here
+WEBHOOK_SECRET=your_webhook_secret_here
+LISTEN_ADDR=:8080
+WORKSPACE_DIR=/var/lib/athanor/workspaces
+KERNEL_PATH=/var/lib/athanor/vmlinux
+ROOTFS_PATH=/var/lib/athanor/rootfs.ext4
+SSH_KEY_PATH=/var/lib/athanor/vm-ssh-key
+VM_DISK_DIR=/var/lib/athanor/vm-disks
+VM_CPUS=2
+VM_MEMORY_MB=1024
+EOF
+chmod 600 /etc/athanor/env
+```
+
+Start the service:
+
+```bash
+systemctl start athanor
+journalctl -u athanor -f
 ```
 
 ## Run Tests
 
 ```bash
 make test
-```
-
-## Optional: Install Globally
-
-Copy the binary somewhere on your `$PATH`:
-
-```bash
-cp bin/athanor /usr/local/bin/
+make vet
 ```

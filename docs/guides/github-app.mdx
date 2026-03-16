@@ -1,0 +1,149 @@
+---
+title: GitHub App Setup
+description: Enable the Checks API for full CI logs on GitHub
+---
+
+By default, athanor reports results via **commit statuses** (pass/fail). To get **full log output** visible directly on GitHub — with per-step details, expandable logs, and proper check run annotations — you need to create a **GitHub App**.
+
+This is the standard way to integrate CI systems with GitHub. The Checks API is only available to GitHub Apps, not personal access tokens.
+
+## Why a GitHub App?
+
+| | Commit Statuses (PAT) | Checks API (GitHub App) |
+|---|---|---|
+| Pass/fail badge | Yes | Yes |
+| Per-workflow status | No (single "athanor" check) | Yes (one check per workflow) |
+| Log output on GitHub | No | Yes (full Markdown logs) |
+| Per-step details | No | Yes |
+| Token expiry | Manual rotation | Auto-refreshing (1-hour tokens) |
+
+## Step 1: Create the App
+
+Go to [github.com/settings/apps/new](https://github.com/settings/apps/new) and fill in:
+
+| Field | Value |
+|---|---|
+| **GitHub App name** | `athanor-ci` (or any name you want) |
+| **Homepage URL** | `http://your-server-ip:8080` |
+| **Webhook** | **Uncheck** "Active" (athanor has its own webhook handler) |
+
+### Permissions
+
+Under **Repository permissions**, set:
+
+| Permission | Access |
+|---|---|
+| **Checks** | Read & Write |
+| **Commit statuses** | Read & Write |
+| **Contents** | Read-only |
+| **Metadata** | Read-only |
+
+Leave all other permissions as "No access".
+
+Under **Where can this GitHub App be installed?**, select **Only on this account**.
+
+Click **Create GitHub App**.
+
+## Step 2: Note the App ID
+
+After creation, you'll be on the app's settings page. The **App ID** is displayed near the top — a number like `123456`. Save this.
+
+## Step 3: Generate a Private Key
+
+On the same settings page, scroll to **Private keys** and click **Generate a private key**.
+
+A `.pem` file downloads to your machine. This is the private key athanor uses to authenticate as the app. Keep it safe.
+
+## Step 4: Install the App
+
+In the left sidebar of the app settings, click **Install App**.
+
+Click **Install** next to your account. Select **Only select repositories** and choose your repository (e.g., `athanor`). Click **Install**.
+
+After installation, note the **Installation ID** from the URL:
+
+```
+https://github.com/settings/installations/12345678
+                                           ^^^^^^^^
+                                        Installation ID
+```
+
+## Step 5: Configure the Server
+
+### Using the Setup Script
+
+The repo includes a script that handles the rest:
+
+```bash
+./scripts/setup-github-app.sh <APP_ID> <path-to-private-key.pem>
+```
+
+It will:
+1. Upload the private key to the server
+2. Look up the installation ID automatically
+3. Update the server config
+4. Restart athanor
+
+### Manual Configuration
+
+If you prefer to do it manually, upload the private key:
+
+```bash
+scp your-app.private-key.pem root@your-server:/etc/athanor/github-app.pem
+ssh root@your-server 'chmod 600 /etc/athanor/github-app.pem'
+```
+
+Add these lines to `/etc/athanor/env`:
+
+```bash
+GITHUB_APP_ID=123456
+GITHUB_APP_INSTALLATION_ID=12345678
+GITHUB_APP_PRIVATE_KEY_PATH=/etc/athanor/github-app.pem
+```
+
+Restart:
+
+```bash
+systemctl restart athanor
+```
+
+## Step 6: Verify
+
+Check the logs to confirm the app is configured:
+
+```bash
+journalctl -u athanor -n 5 --no-pager
+```
+
+You should see:
+
+```
+[athanor] GitHub App configured (app_id=123456, installation_id=12345678)
+```
+
+Push a commit to trigger a build. On GitHub, go to the commit and you'll see a check run with full logs:
+
+- Each workflow appears as a separate check run
+- Click **Details** to see the full log output
+- Logs are formatted as Markdown with per-job, per-step sections and code blocks
+
+## How It Works
+
+Under the hood, athanor uses standard GitHub App authentication:
+
+1. **JWT generation** — athanor signs a short-lived JWT with the app's RSA private key
+2. **Token exchange** — the JWT is exchanged for an installation access token via `POST /app/installations/{id}/access_tokens`
+3. **API calls** — the installation token is used to create and update check runs via the Checks API
+4. **Token caching** — tokens are cached and refreshed automatically (they expire after 1 hour)
+
+The PAT-based commit status is always set as a fallback, so even if the GitHub App fails, you still get pass/fail reporting.
+
+## Environment Variables Reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `GITHUB_APP_ID` | Yes | The App ID from step 2 |
+| `GITHUB_APP_INSTALLATION_ID` | Yes | The Installation ID from step 4 |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | Yes | Path to the `.pem` file on the server |
+
+These are in addition to the base config (`GITHUB_TOKEN`, `WEBHOOK_SECRET`, etc.).

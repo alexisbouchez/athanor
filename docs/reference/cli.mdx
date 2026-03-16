@@ -1,63 +1,99 @@
 ---
 title: CLI Reference
-description: Command-line flags and Make targets
+description: Commands, flags, and configuration
 ---
 
-## Binary Usage
+## Commands
+
+### `athanor serve`
+
+Start the webhook server.
 
 ```bash
-athanor [flags]
+athanor serve
 ```
 
-### Flags
+Reads configuration from environment variables (or `/etc/athanor/env` via systemd).
+
+### `athanor` (default)
+
+Launch the interactive TUI to run workflows locally.
+
+```bash
+# Interactive — pick a workflow
+athanor
+
+# Run a specific workflow
+athanor --workflow .github/workflows/ci.yml
+
+# Custom workflow directory
+athanor --workflow-dir ./my-workflows
+```
+
+### Flags (Local Mode)
 
 | Flag | Default | Description |
 |---|---|---|
 | `--workflow-dir` | `.github/workflows` | Directory to search for workflow files |
 | `--workflow` | *(none)* | Path to a specific workflow file (skips the selection TUI) |
 
-### Examples
+## Environment Variables (Server Mode)
 
-```bash
-# Interactive mode — pick from discovered workflows
-athanor
+### Required
 
-# Run a specific workflow
-athanor --workflow .github/workflows/ci.yml
+| Variable | Description |
+|---|---|
+| `WEBHOOK_SECRET` | GitHub webhook secret for signature validation |
+| `GITHUB_TOKEN` | Personal access token with `repo:status` scope |
 
-# Use a custom workflow directory
-athanor --workflow-dir ./my-workflows
-```
+### Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `LISTEN_ADDR` | `:8080` | Address to listen on |
+| `WORKSPACE_DIR` | `/var/lib/athanor/workspaces` | Where repos are cloned |
+
+### MicroVM
+
+Set `KERNEL_PATH` to enable VM mode. If unset, steps run directly on the host.
+
+| Variable | Default | Description |
+|---|---|---|
+| `KERNEL_PATH` | *(none)* | Path to vmlinux kernel. Enables VM mode. |
+| `ROOTFS_PATH` | `/var/lib/athanor/rootfs.ext4` | Base rootfs image |
+| `SSH_KEY_PATH` | `/var/lib/athanor/vm-ssh-key` | SSH private key for VM access |
+| `VM_DISK_DIR` | `/var/lib/athanor/vm-disks` | Directory for per-VM rootfs copies |
+| `VM_CPUS` | `2` | vCPUs per VM |
+| `VM_MEMORY_MB` | `2048` | RAM per VM in MB |
+
+### GitHub App (Optional)
+
+For Checks API support with full logs. See [GitHub App Setup](/guides/github-app).
+
+| Variable | Description |
+|---|---|
+| `GITHUB_APP_ID` | GitHub App ID |
+| `GITHUB_APP_INSTALLATION_ID` | Installation ID |
+| `GITHUB_APP_PRIVATE_KEY_PATH` | Path to the `.pem` private key |
+
+## HTTP Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/` | Web dashboard |
+| `GET` | `/health` | Health check (returns `ok`) |
+| `POST` | `/webhook` | GitHub webhook receiver |
+| `GET` | `/api/runs` | Recent runs as JSON |
+| `GET` | `/api/events` | SSE stream of run updates |
 
 ## Make Targets
 
 | Target | Description |
 |---|---|
 | `make build` | Build binary to `bin/athanor` |
+| `make build-linux` | Cross-compile for Linux (arm64 + amd64) |
 | `make test` | Run all tests |
 | `make vet` | Run `go vet ./...` |
-| `make lint` | Run `golangci-lint` (requires separate install) |
 | `make run` | Build and launch the TUI |
 | `make run-workflow WORKFLOW=path` | Build and run a specific workflow |
 | `make clean` | Remove build artifacts |
-
-### Cross-Compilation
-
-```bash
-make build-linux    # Produces bin/athanor-linux-arm64 and bin/athanor-linux-amd64
-```
-
-### Lima VM (macOS MicroVM Support)
-
-| Target | Description |
-|---|---|
-| `make lima-create` | Create the Lima VM from `lima/athanor.yaml` |
-| `make lima-start` | Start the VM |
-| `make lima-shell` | Open a shell inside the VM |
-| `make lima-stop` | Stop the VM |
-| `make lima-delete` | Delete the VM |
-
-## Exit Behavior
-
-- **Ctrl+C** — cancels the running workflow (kills child processes) and exits
-- **q** or **Enter** — exits after a workflow has finished

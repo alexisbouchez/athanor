@@ -91,6 +91,21 @@ type Server struct {
 func New(cfg *Config) *Server {
 	logger := log.New(os.Stdout, "[athanor] ", log.LstdFlags)
 	gh := NewGitHubClient(cfg.GitHubToken)
+
+	// Configure GitHub App if credentials are provided
+	appID := os.Getenv("GITHUB_APP_ID")
+	installationID := os.Getenv("GITHUB_APP_INSTALLATION_ID")
+	appKeyPath := os.Getenv("GITHUB_APP_PRIVATE_KEY_PATH")
+	if appID != "" && installationID != "" && appKeyPath != "" {
+		app, err := NewGitHubApp(appID, installationID, appKeyPath)
+		if err != nil {
+			logger.Printf("Warning: failed to configure GitHub App: %v", err)
+		} else {
+			gh.SetApp(app)
+			logger.Printf("GitHub App configured (app_id=%s, installation_id=%s)", appID, installationID)
+		}
+	}
+
 	store := NewRunStore(50)
 	worker := NewWorker(cfg, gh, logger)
 	worker.store = store

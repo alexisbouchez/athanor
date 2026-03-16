@@ -1,71 +1,108 @@
 ---
 title: Supported Features
-description: What subset of GitHub Actions syntax athanor supports
+description: GitHub Actions features that athanor supports
 ---
 
-## Supported
+## Workflow Syntax
 
 <CardGroup cols={2}>
   <Card title="run: steps" icon="terminal">
     Shell scripts executed via bash (or configured shell)
   </Card>
+  <Card title="uses: actions" icon="puzzle-piece">
+    GitHub actions, local actions, composite actions, Node.js actions
+  </Card>
   <Card title="Job dependencies" icon="diagram-project">
     `needs:` with DAG resolution and concurrent execution
   </Card>
+  <Card title="Matrix strategy" icon="table-cells">
+    Cartesian product expansion with include/exclude
+  </Card>
+  <Card title="Expression engine" icon="calculator">
+    Full `$&#123;&#123; &#125;&#125;` evaluation — contexts, operators, functions
+  </Card>
   <Card title="Environment variables" icon="sliders">
-    `env:` at workflow, job, and step levels
+    `env:` at workflow, job, and step levels + `$GITHUB_ENV`
   </Card>
   <Card title="Step outputs" icon="arrow-right-arrow-left">
-    `$GITHUB_OUTPUT` file and `$\{{ steps.id.outputs.key }}` expressions
+    `$GITHUB_OUTPUT` with multiline delimiter support
+  </Card>
+  <Card title="Job outputs" icon="share-nodes">
+    `jobs.*.outputs` evaluated from step outputs
   </Card>
   <Card title="Conditions" icon="code-branch">
-    `if: success()`, `failure()`, `always()`
+    Full expression evaluation in `if:` — `success()`, `failure()`, `always()`, `cancelled()`
+  </Card>
+  <Card title="Timeouts" icon="clock">
+    `timeout-minutes` at job and step level
   </Card>
   <Card title="continue-on-error" icon="forward">
     Step failures don't fail the job
   </Card>
-  <Card title="working-directory" icon="folder">
-    Per-step or via job defaults
-  </Card>
-  <Card title="shell" icon="gear">
-    Per-step or via job defaults (bash, sh, etc.)
-  </Card>
-  <Card title="Step id" icon="tag">
-    Naming steps for output references
-  </Card>
-  <Card title="Job defaults" icon="layer-group">
-    Default shell and working-directory for all steps
+  <Card title="GitHub context" icon="github">
+    `github.sha`, `github.ref`, `github.repository`, `github.actor`, etc.
   </Card>
 </CardGroup>
 
-## Not Yet Supported
+## Expression Functions
 
-These features are recognized but not implemented. Workflows using them will either
-be partially executed or fail at parse time.
+| Function | Description |
+|---|---|
+| `contains(search, item)` | Case-insensitive string/array search |
+| `startsWith(string, prefix)` | Case-insensitive prefix check |
+| `endsWith(string, suffix)` | Case-insensitive suffix check |
+| `format(string, args...)` | String formatting with `{0}`, `{1}` placeholders |
+| `join(array, separator)` | Join array elements |
+| `toJSON(value)` | Convert to JSON string |
+| `fromJSON(string)` | Parse JSON string |
+| `success()` | True if job has not failed |
+| `failure()` | True if any previous step failed |
+| `always()` | Always true |
+| `cancelled()` | True if workflow was cancelled |
+
+## Expression Contexts
+
+| Context | Description |
+|---|---|
+| `github.*` | Repository, commit, ref, actor, event info |
+| `env.*` | Environment variables |
+| `steps.*` | Step outputs and outcomes |
+| `needs.*` | Dependent job outputs and results |
+| `matrix.*` | Current matrix combination values |
+| `runner.*` | Runner OS, architecture, temp directory |
+| `job.*` | Current job status |
+| `inputs.*` | Workflow/action inputs |
+
+## Action Support
+
+| Type | Example | Status |
+|---|---|---|
+| GitHub actions | `actions/checkout@v4` | Supported (built-in shim for checkout) |
+| Local actions | `./my-action` | Supported |
+| Composite actions | `uses:` with `runs.using: composite` | Supported |
+| Node.js actions | `runs.using: node20` | Supported (requires Node on PATH) |
+| Docker actions | `docker://image` | Not supported |
+
+## CI Server Features
+
+| Feature | Description |
+|---|---|
+| GitHub webhooks | Receives `push` and `pull_request` events |
+| Commit statuses | Reports pass/fail via the Statuses API |
+| Checks API | Full log output per workflow (requires GitHub App) |
+| MicroVM isolation | Each job runs in an ephemeral CloudHypervisor VM |
+| virtiofs sharing | Workspace shared between host and VM |
+| Web dashboard | Real-time build status with per-step log viewing |
+| SSE updates | Live streaming of build progress to the browser |
+
+## Not Yet Supported
 
 | Feature | Notes |
 |---|---|
-| `uses:` actions | Marketplace and local actions are not supported |
-| `matrix:` strategy | No matrix expansion |
 | `container:` / `services:` | No Docker containers |
 | Reusable workflows | `workflow_call` not supported |
-| Composite actions | Not supported |
-| `$GITHUB_ENV` | Cannot set env vars for subsequent steps via file |
-| `$GITHUB_PATH` | Cannot modify PATH for subsequent steps via file |
-| Full expression syntax | Only `steps.*.outputs.*` patterns are expanded |
-| `env.*` / `github.*` context | Expression contexts beyond step outputs |
-| Functions in expressions | `contains()`, `toJSON()`, `startsWith()`, etc. |
+| `$GITHUB_PATH` in VMs | PATH modifications within VM sessions |
 | Secrets | `secrets.*` context |
 | Permissions | `permissions:` field |
 | Concurrency | `concurrency:` groups |
-| Timeout | `timeout-minutes:` |
 | Artifacts | `actions/upload-artifact`, `actions/download-artifact` |
-
-## Roadmap
-
-Planned for future versions:
-
-1. **`$GITHUB_ENV`** and **`$GITHUB_PATH`** support
-2. **Full expression evaluation** (`env.*`, `github.*`, functions)
-3. **MicroVM isolation** — run jobs inside CloudHypervisor VMs
-4. **`uses:` actions** — clone and execute action repositories

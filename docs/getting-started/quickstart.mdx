@@ -1,117 +1,99 @@
 ---
 title: Quick Start
-description: Run your first workflow in under a minute
+description: Get athanor running as a CI server in 5 minutes
 ---
 
-Athanor ships with example workflows you can try immediately.
+## 1. Deploy
 
-## 1. Build
-
-```bash
-make build
-```
-
-## 2. Launch the TUI
+Build the binary and copy it to your server (see [Installation](/getting-started/installation) for full details):
 
 ```bash
-make run
+make build-linux
+scp bin/athanor-linux-amd64 root@your-server:/usr/local/bin/athanor
 ```
 
-Athanor discovers all `.yml` and `.yaml` files in `.github/workflows/` and presents a
-selection screen. Use arrow keys to pick a workflow, then press Enter.
-
-## 3. Watch It Run
-
-The execution view has two panels:
-
-- **Left** — job/step tree with live status glyphs (`·` pending, `●` running, `✓` passed, `✗` failed)
-- **Right** — scrollable log output for the active step
-
-When the workflow finishes, press `q` or Enter to exit.
-
-## Run a Specific Workflow
-
-Skip the selection screen by passing a file path directly:
+Run the setup script on the server:
 
 ```bash
-./bin/athanor --workflow .github/workflows/self-test.yml
+ssh root@your-server 'bash -s' < scripts/setup-vps.sh
 ```
 
-Or via Make:
+## 2. Configure
+
+Create a GitHub Personal Access Token at [github.com/settings/tokens](https://github.com/settings/tokens) with `repo:status` scope.
+
+Generate a webhook secret:
 
 ```bash
-make run-workflow WORKFLOW=.github/workflows/demo.yml
+openssl rand -hex 32
 ```
 
-## Example Workflows
+Write the config on the server:
 
-The repo includes two workflows:
+```bash
+cat > /etc/athanor/env << 'EOF'
+GITHUB_TOKEN=ghp_your_token
+WEBHOOK_SECRET=your_secret
+LISTEN_ADDR=:8080
+KERNEL_PATH=/var/lib/athanor/vmlinux
+EOF
+```
 
-<AccordionGroup>
-  <Accordion title="self-test.yml — Build and test athanor itself">
-    Runs `go vet`, then `go test` and `go build` in parallel:
+Start the service:
 
-    ```
-    vet ──┬── test
-          └── build
-    ```
+```bash
+systemctl start athanor
+```
 
-    ```yaml
-    name: Self Test
-    on: push
-    jobs:
-      vet:
-        runs-on: ubuntu-latest
-        steps:
-          - name: Go vet
-            run: go vet ./...
-      test:
-        runs-on: ubuntu-latest
-        needs: vet
-        steps:
-          - name: Run tests
-            run: go test ./...
-      build:
-        runs-on: ubuntu-latest
-        needs: vet
-        steps:
-          - name: Build binary
-            run: go build -o bin/athanor ./cmd/athanor
-    ```
-  </Accordion>
+## 3. Set Up the Webhook
 
-  <Accordion title="demo.yml — Env vars, outputs, continue-on-error, conditions">
-    Demonstrates environment variables, step outputs via `$GITHUB_OUTPUT`,
-    `continue-on-error: true`, and `if: always()`.
+On your GitHub repository, go to **Settings > Webhooks > Add webhook**:
 
-    ```yaml
-    name: Demo Workflow
-    on: push
-    env:
-      GREETING: hello
-    jobs:
-      setup:
-        runs-on: ubuntu-latest
-        steps:
-          - name: Print greeting
-            run: echo "$GREETING from setup"
-          - name: Produce output
-            id: info
-            run: |
-              echo "version=1.0.0" >> "$GITHUB_OUTPUT"
-              echo "Setup complete"
-      build:
-        runs-on: ubuntu-latest
-        needs: setup
-        steps:
-          - name: Use output
-            run: echo "Building version $\{{ steps.info.outputs.version }}"
-          - name: Intentional failure
-            run: exit 1
-            continue-on-error: true
-          - name: Always cleanup
-            if: always()
-            run: echo "Cleaning up"
-    ```
-  </Accordion>
-</AccordionGroup>
+| Field | Value |
+|---|---|
+| Payload URL | `http://your-server-ip:8080/webhook` |
+| Content type | `application/json` |
+| Secret | The secret you generated |
+| Events | `push` and `pull_request` |
+
+Or use the GitHub CLI:
+
+```bash
+gh api repos/OWNER/REPO/hooks --method POST --input - << EOF
+{
+  "config": {
+    "url": "http://your-server-ip:8080/webhook",
+    "content_type": "json",
+    "secret": "your_secret"
+  },
+  "events": ["push", "pull_request"],
+  "active": true
+}
+EOF
+```
+
+## 4. Push and Watch
+
+Push a commit. The webhook fires, athanor spins up a microVM, runs your workflow, and reports the result.
+
+Check the web dashboard at `http://your-server-ip:8080/` to see the run in real time.
+
+Check the commit on GitHub — you'll see an athanor status check.
+
+## 5. (Optional) Enable the Checks API
+
+For full log output on GitHub (not just pass/fail), set up a GitHub App. See [GitHub App Setup](/guides/github-app).
+
+## Local Mode
+
+You can also run workflows locally with the terminal UI:
+
+```bash
+# Interactive — pick a workflow
+athanor
+
+# Run a specific file
+athanor --workflow .github/workflows/ci.yml
+```
+
+The TUI shows a split-panel view with the job/step tree on the left and scrollable log output on the right.
