@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alexj212/athanor/internal/action"
 	"github.com/alexj212/athanor/internal/runner"
 	"github.com/alexj212/athanor/internal/vmm"
 	"github.com/alexj212/athanor/internal/workflow"
@@ -27,21 +28,23 @@ type Job struct {
 
 // Worker processes jobs sequentially.
 type Worker struct {
-	queue     chan Job
-	cfg       *Config
-	gh        *GitHubClient
-	logger    *log.Logger
-	lifecycle runner.JobLifecycle
-	store     *RunStore
+	queue       chan Job
+	cfg         *Config
+	gh          *GitHubClient
+	logger      *log.Logger
+	lifecycle   runner.JobLifecycle
+	store       *RunStore
+	concurrency *ConcurrencyManager
 }
 
 // NewWorker creates a new job worker.
 func NewWorker(cfg *Config, gh *GitHubClient, logger *log.Logger) *Worker {
 	w := &Worker{
-		queue:  make(chan Job, 32),
-		cfg:    cfg,
-		gh:     gh,
-		logger: logger,
+		queue:       make(chan Job, 32),
+		cfg:         cfg,
+		gh:          gh,
+		logger:      logger,
+		concurrency: NewConcurrencyManager(),
 	}
 
 	// Set up VM lifecycle if configured
@@ -108,6 +111,12 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		w.logger.Printf("Warning: failed to set pending status: %v", err)
 	}
 
+	// Set up artifact directory for this run
+	artifactDir := filepath.Join(w.cfg.WorkspaceDir, ".artifacts", job.SHA[:8])
+	os.MkdirAll(artifactDir, 0o755)
+	action.ArtifactDir = artifactDir
+	defer os.RemoveAll(artifactDir)
+
 	// Prepare workspace
 	workspace, err := w.prepareWorkspace(ctx, job)
 	if err != nil {
@@ -125,11 +134,11 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		return
 	}
 
-	// Filter to matching event
+	// Filter to matching event and branch
 	var matching []*workflow.Workflow
 	for _, wf := range workflows {
 		for _, event := range wf.On.Events {
-			if event == job.EventName {
+			if event == job.EventName && wf.On.MatchesRef(event, job.Ref) {
 				matching = append(matching, wf)
 				break
 			}
@@ -146,6 +155,16 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 	overallSuccess := true
 	for _, wf := range matching {
 		w.logger.Printf("Running workflow %q", wf.Name)
+
+		// Apply concurrency control
+		runCtxForWf := ctx
+		var releaseConcurrency func()
+		if wf.Concurrency != nil && wf.Concurrency.Group != "" {
+			group := wf.Concurrency.Group
+			// Interpolate the group name (may contain ${{ github.ref }} etc.)
+			runCtxForWf, releaseConcurrency = w.concurrency.Acquire(ctx, group, wf.Concurrency.CancelInProgress)
+			w.logger.Printf("Acquired concurrency group %q", group)
+		}
 
 		// Build run context
 		refName := job.Ref
@@ -173,13 +192,14 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		}
 
 		runCtx := runner.NewRunContextWith(ghCtx)
+		runCtx.Secrets = w.cfg.Secrets
 		var r *runner.Runner
 		if w.lifecycle != nil {
 			r = runner.NewRunnerWithLifecycle(wf, runCtx, w.lifecycle)
 		} else {
 			r = runner.NewRunnerWithContext(wf, runCtx)
 		}
-		go r.Run(ctx)
+		go r.Run(runCtxForWf)
 
 		// Create a GitHub Check Run for this workflow
 		now := time.Now()
@@ -280,6 +300,11 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 					Text:    logText,
 				},
 			})
+		}
+
+		// Release concurrency slot
+		if releaseConcurrency != nil {
+			releaseConcurrency()
 		}
 
 		w.logger.Printf("Workflow %q finished: %s", wf.Name, status)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -269,6 +270,29 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 		rc.Env[k] = v
 	}
 
+	// Handle reusable workflow (job with uses: instead of steps:)
+	if job.Uses != "" {
+		return r.runReusableWorkflow(ctx, jobID, job, &rc)
+	}
+
+	// Start service containers
+	var serviceContainerIDs []string
+	if len(job.Services) > 0 {
+		for name, svc := range job.Services {
+			containerID, err := startServiceContainer(ctx, name, svc)
+			if err != nil {
+				r.events <- StepOutput{JobID: jobID, StepIdx: 0, Line: fmt.Sprintf("Failed to start service %s: %v", name, err)}
+			} else {
+				serviceContainerIDs = append(serviceContainerIDs, containerID)
+			}
+		}
+		defer func() {
+			for _, id := range serviceContainerIDs {
+				exec.CommandContext(ctx, "docker", "rm", "-f", id).Run()
+			}
+		}()
+	}
+
 	// Build job-level env
 	env := NewEnv(rc.DefaultEnvVars(jobID, ""), r.wf.Env, job.Env)
 
@@ -508,6 +532,26 @@ func (r *Runner) runRunStep(ctx context.Context, jobID string, stepIdx int, step
 		WorkingDirectory: workDir,
 		Env:              stepEnv.List(),
 		OutputPath:       outputPath,
+	}
+
+	// Add container config if job has container:
+	if job.Container != nil {
+		opts.Container = job.Container.Image
+		opts.ContainerEnv = job.Container.Env
+		opts.ContainerVolumes = job.Container.Volumes
+	}
+
+	// Start service containers if configured
+	if len(job.Services) > 0 {
+		opts.Services = make(map[string]ServiceConfig, len(job.Services))
+		for name, svc := range job.Services {
+			opts.Services[name] = ServiceConfig{
+				Image:   svc.Image,
+				Env:     svc.Env,
+				Ports:   svc.Ports,
+				Volumes: svc.Volumes,
+			}
+		}
 	}
 
 	result, execErr := r.exec(ctx, script, opts, lines)
@@ -826,6 +870,101 @@ func (r *Runner) runNodeAction(ctx context.Context, jobID string, stepIdx int, m
 	}
 
 	return result.ExitCode, nil, nil
+}
+
+// runReusableWorkflow executes a reusable workflow referenced by a job's uses: field.
+func (r *Runner) runReusableWorkflow(ctx context.Context, jobID string, job workflow.Job, rc *RunContext) *JobResult {
+	// Resolve the workflow file path
+	usesPath := job.Uses
+	if strings.HasPrefix(usesPath, "./") {
+		usesPath = filepath.Join(filepath.Dir(r.wf.Path), "..", "..", usesPath)
+	}
+
+	calledWf, err := workflow.ParseFile(usesPath)
+	if err != nil {
+		r.events <- StepOutput{JobID: jobID, StepIdx: 0, Line: fmt.Sprintf("Failed to parse reusable workflow: %v", err)}
+		r.events <- JobFinished{JobID: jobID, Status: "failure"}
+		return &JobResult{Status: "failure"}
+	}
+
+	// Pass inputs
+	if job.With != nil {
+		rc.Inputs = job.With
+	}
+
+	// Pass secrets (inherit = copy all, otherwise map specific ones)
+	if job.Secrets.IsInherit() {
+		// Already inherited from parent RunContext
+	} else if job.Secrets.Map != nil {
+		for k, v := range job.Secrets.Map {
+			if resolved, err := expr.Interpolate(v, rc.ToMap()); err == nil {
+				rc.Secrets[k] = resolved
+			}
+		}
+	}
+
+	// Create a sub-runner for the called workflow
+	subRunner := &Runner{
+		wf:        calledWf,
+		events:    r.events, // share events channel (don't close it)
+		exec:      r.exec,
+		runCtx:    rc,
+		lifecycle: r.lifecycle,
+	}
+
+	// Run all jobs from the called workflow inline
+	expandedJobs, matrixContexts := subRunner.expandMatrixJobs()
+	levels, err := topoSort(expandedJobs)
+	if err != nil {
+		r.events <- JobFinished{JobID: jobID, Status: "failure"}
+		return &JobResult{Status: "failure"}
+	}
+
+	overallStatus := "success"
+	jobResults := make(map[string]*JobResult)
+
+	for _, level := range levels {
+		for _, subJobID := range level {
+			subJob := expandedJobs[subJobID]
+			mc := matrixContexts[subJobID]
+			needsCtx := make(map[string]NeedContext)
+			for _, need := range subJob.Needs {
+				if jr, ok := jobResults[need]; ok {
+					needsCtx[need] = NeedContext{Outputs: jr.Outputs, Result: jr.Status}
+				}
+			}
+			result := subRunner.runJob(ctx, subJobID, subJob, mc, needsCtx)
+			jobResults[subJobID] = result
+			if result.Status != "success" {
+				overallStatus = "failure"
+			}
+		}
+	}
+
+	r.events <- JobFinished{JobID: jobID, Status: overallStatus}
+	return &JobResult{Status: overallStatus}
+}
+
+// startServiceContainer starts a Docker service container and returns its ID.
+func startServiceContainer(ctx context.Context, name string, svc workflow.Service) (string, error) {
+	args := []string{"run", "-d", "--name", "athanor-svc-" + name, "--network", "host"}
+	for k, v := range svc.Env {
+		args = append(args, "-e", k+"="+v)
+	}
+	for _, p := range svc.Ports {
+		args = append(args, "-p", p)
+	}
+	for _, v := range svc.Volumes {
+		args = append(args, "-v", v)
+	}
+	args = append(args, svc.Image)
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("docker run %s: %w", svc.Image, err)
+	}
+	return strings.TrimSpace(string(out)), nil
 }
 
 // shouldRun evaluates whether a step should execute based on its if: condition.

@@ -21,9 +21,22 @@ type ExecOptions struct {
 	WorkingDirectory string
 	Env              []string
 	OutputPath       string // path to GITHUB_OUTPUT file
+	Container        string // if set, run inside this Docker image
+	ContainerEnv     map[string]string
+	ContainerVolumes []string
+	Services         map[string]ServiceConfig
+}
+
+// ServiceConfig defines a service container.
+type ServiceConfig struct {
+	Image   string
+	Env     map[string]string
+	Ports   []string
+	Volumes []string
 }
 
 // ExecStep writes the script to a temp file and executes it, streaming output lines.
+// If opts.Container is set, the script runs inside a Docker container.
 func ExecStep(ctx context.Context, script string, opts ExecOptions, lines chan<- string) (*StepResult, error) {
 	// Write script to temp file
 	tmp, err := os.CreateTemp("", "athanor-step-*.sh")
@@ -43,7 +56,37 @@ func ExecStep(ctx context.Context, script string, opts ExecOptions, lines chan<-
 		shell = "bash"
 	}
 
-	cmd := exec.CommandContext(ctx, shell, tmp.Name())
+	var cmd *exec.Cmd
+	if opts.Container != "" {
+		// Run inside Docker container
+		args := []string{"run", "--rm", "-i"}
+		// Mount workspace
+		if opts.WorkingDirectory != "" {
+			args = append(args, "-v", opts.WorkingDirectory+":"+opts.WorkingDirectory, "-w", opts.WorkingDirectory)
+		}
+		// Mount the script
+		args = append(args, "-v", tmp.Name()+":"+tmp.Name())
+		// Mount output file
+		if opts.OutputPath != "" {
+			args = append(args, "-v", opts.OutputPath+":"+opts.OutputPath)
+		}
+		// Container env
+		for k, v := range opts.ContainerEnv {
+			args = append(args, "-e", k+"="+v)
+		}
+		// Env from opts
+		for _, env := range opts.Env {
+			args = append(args, "-e", env)
+		}
+		// Volumes
+		for _, vol := range opts.ContainerVolumes {
+			args = append(args, "-v", vol)
+		}
+		args = append(args, opts.Container, shell, tmp.Name())
+		cmd = exec.CommandContext(ctx, "docker", args...)
+	} else {
+		cmd = exec.CommandContext(ctx, shell, tmp.Name())
+	}
 	cmd.Env = opts.Env
 	if opts.WorkingDirectory != "" {
 		cmd.Dir = opts.WorkingDirectory

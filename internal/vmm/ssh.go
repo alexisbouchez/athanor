@@ -66,9 +66,14 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 			envExports.WriteString(fmt.Sprintf("export %s=%s\n", key, shellQuote(parts[1])))
 		}
 
-		// Ensure workspace is mounted, tools are in PATH, then run the script
+		// Preamble: mount workspace, set PATH (including GITHUB_PATH additions), set HOME
 		remoteScript := fmt.Sprintf(
-			"export PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH; export HOME=/root; modprobe virtiofs 2>/dev/null; mount -t virtiofs workspace /workspace 2>/dev/null; git config --global safe.directory '*' 2>/dev/null; %scd %s && cat > /tmp/athanor-step.sh << 'ATHANOR_SCRIPT_EOF'\n%s\nATHANOR_SCRIPT_EOF\n%s /tmp/athanor-step.sh",
+			"export PATH=/usr/local/go/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH; export HOME=/root; "+
+				"modprobe virtiofs 2>/dev/null; mount -t virtiofs workspace /workspace 2>/dev/null; "+
+				"git config --global safe.directory '*' 2>/dev/null; "+
+				"if [ -f /tmp/gh-path ]; then while IFS= read -r p; do export PATH=\"$p:$PATH\"; done < /tmp/gh-path; fi; "+
+				"if [ -f /tmp/gh-env ]; then set -a; . /tmp/gh-env 2>/dev/null; set +a; fi; "+
+				"%scd %s && cat > /tmp/athanor-step.sh << 'ATHANOR_SCRIPT_EOF'\n%s\nATHANOR_SCRIPT_EOF\n%s /tmp/athanor-step.sh",
 			envExports.String(), shellQuote(workDir), script, shell,
 		)
 

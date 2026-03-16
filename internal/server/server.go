@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -10,8 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-
-	"context"
+	"strings"
 )
 
 // Config holds server configuration.
@@ -29,6 +29,22 @@ type Config struct {
 	VMCPUs        int
 	VMMemoryMB    int
 	VMMaxParallel int
+
+	// Secrets loaded from env vars prefixed with SECRET_
+	Secrets map[string]string
+}
+
+// loadSecrets reads environment variables prefixed with SECRET_ and strips the prefix.
+func loadSecrets() map[string]string {
+	secrets := make(map[string]string)
+	for _, env := range os.Environ() {
+		if key, val, ok := strings.Cut(env, "="); ok {
+			if after, found := strings.CutPrefix(key, "SECRET_"); found {
+				secrets[after] = val
+			}
+		}
+	}
+	return secrets
 }
 
 // UseVMs returns true if VM mode is configured.
@@ -50,6 +66,7 @@ func LoadConfig() (*Config, error) {
 		VMCPUs:        envOrInt("VM_CPUS", 2),
 		VMMemoryMB:    envOrInt("VM_MEMORY_MB", 2048),
 		VMMaxParallel: envOrInt("VM_MAX_PARALLEL", 0),
+		Secrets:       loadSecrets(),
 	}
 	if cfg.WebhookSecret == "" {
 		return nil, fmt.Errorf("WEBHOOK_SECRET environment variable is required")

@@ -3,7 +3,10 @@ package action
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 )
 
 // BuiltinFunc is a function that implements a built-in action.
@@ -13,9 +16,11 @@ type BuiltinFunc func(ctx context.Context, inputs map[string]string, workspace s
 
 // Builtins maps action names (owner/repo) to built-in implementations.
 var Builtins = map[string]BuiltinFunc{
-	"actions/checkout":   builtinCheckout,
-	"actions/setup-node": builtinSetupNode,
-	"actions/setup-go":   builtinSetupGo,
+	"actions/checkout":          builtinCheckout,
+	"actions/setup-node":        builtinSetupNode,
+	"actions/setup-go":          builtinSetupGo,
+	"actions/upload-artifact":   builtinUploadArtifact,
+	"actions/download-artifact": builtinDownloadArtifact,
 }
 
 // LookupBuiltin checks if a GitHub action has a built-in implementation.
@@ -71,4 +76,94 @@ func builtinSetupNode(_ context.Context, _ map[string]string, _ string) (map[str
 // Go is pre-installed in the VM rootfs.
 func builtinSetupGo(_ context.Context, _ map[string]string, _ string) (map[string]string, error) {
 	return nil, nil
+}
+
+// ArtifactDir is the shared directory for artifacts between jobs.
+// Set by the server before running workflows.
+var ArtifactDir string
+
+// builtinUploadArtifact copies files to the artifact store.
+func builtinUploadArtifact(_ context.Context, inputs map[string]string, workspace string) (map[string]string, error) {
+	name := inputs["name"]
+	if name == "" {
+		name = "artifact"
+	}
+	path := inputs["path"]
+	if path == "" {
+		return nil, fmt.Errorf("upload-artifact: path is required")
+	}
+
+	destDir := filepath.Join(ArtifactDir, name)
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		return nil, fmt.Errorf("creating artifact dir: %w", err)
+	}
+
+	// Expand glob patterns
+	var files []string
+	for _, pattern := range strings.Split(path, "\n") {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		absPattern := pattern
+		if !filepath.IsAbs(pattern) {
+			absPattern = filepath.Join(workspace, pattern)
+		}
+		matches, err := filepath.Glob(absPattern)
+		if err != nil {
+			return nil, fmt.Errorf("glob %q: %w", pattern, err)
+		}
+		files = append(files, matches...)
+	}
+
+	for _, src := range files {
+		rel, _ := filepath.Rel(workspace, src)
+		dst := filepath.Join(destDir, rel)
+		os.MkdirAll(filepath.Dir(dst), 0o755)
+		data, err := os.ReadFile(src)
+		if err != nil {
+			return nil, fmt.Errorf("reading %s: %w", src, err)
+		}
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return nil, fmt.Errorf("writing %s: %w", dst, err)
+		}
+	}
+
+	return map[string]string{"artifact-id": name}, nil
+}
+
+// builtinDownloadArtifact copies files from the artifact store to the workspace.
+func builtinDownloadArtifact(_ context.Context, inputs map[string]string, workspace string) (map[string]string, error) {
+	name := inputs["name"]
+	if name == "" {
+		return nil, fmt.Errorf("download-artifact: name is required")
+	}
+
+	srcDir := filepath.Join(ArtifactDir, name)
+	destPath := inputs["path"]
+	if destPath == "" {
+		destPath = workspace
+	} else if !filepath.IsAbs(destPath) {
+		destPath = filepath.Join(workspace, destPath)
+	}
+
+	return nil, copyDir(srcDir, destPath)
+}
+
+func copyDir(src, dst string) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, path)
+		target := filepath.Join(dst, rel)
+		if info.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, info.Mode())
+	})
 }

@@ -19,7 +19,7 @@ description: GitHub Actions features that Athanor supports
     Cartesian product expansion with include/exclude
   </Card>
   <Card title="Expression engine" icon="calculator">
-    Full `$&#123;&#123; &#125;&#125;` evaluation — contexts, operators, functions
+    Full expression evaluation with contexts, operators, and functions
   </Card>
   <Card title="Environment variables" icon="sliders">
     `env:` at workflow, job, and step levels + `$GITHUB_ENV`
@@ -31,7 +31,7 @@ description: GitHub Actions features that Athanor supports
     `jobs.*.outputs` evaluated from step outputs
   </Card>
   <Card title="Conditions" icon="code-branch">
-    Full expression evaluation in `if:` — `success()`, `failure()`, `always()`, `cancelled()`
+    Full expression evaluation in `if:` with status functions
   </Card>
   <Card title="Timeouts" icon="clock">
     `timeout-minutes` at job and step level
@@ -41,6 +41,33 @@ description: GitHub Actions features that Athanor supports
   </Card>
   <Card title="GitHub context" icon="github">
     `github.sha`, `github.ref`, `github.repository`, `github.actor`, etc.
+  </Card>
+  <Card title="Secrets" icon="key">
+    `secrets.*` context populated from server environment variables
+  </Card>
+  <Card title="Concurrency" icon="lock">
+    `concurrency:` groups with `cancel-in-progress` support
+  </Card>
+  <Card title="Permissions" icon="shield">
+    `permissions:` field parsed at workflow and job level
+  </Card>
+  <Card title="Container" icon="cube">
+    `container:` runs job steps inside a Docker container
+  </Card>
+  <Card title="Services" icon="cubes">
+    `services:` starts sidecar containers alongside the job
+  </Card>
+  <Card title="Artifacts" icon="box-archive">
+    `actions/upload-artifact` and `actions/download-artifact` built-in shims
+  </Card>
+  <Card title="Reusable workflows" icon="recycle">
+    `workflow_call` with inputs and secret inheritance
+  </Card>
+  <Card title="Branch filters" icon="filter">
+    `on: push: branches:` and `branches-ignore:` filters
+  </Card>
+  <Card title="$GITHUB_PATH" icon="route">
+    PATH modifications persist across steps (including in VMs)
   </Card>
 </CardGroup>
 
@@ -72,14 +99,17 @@ description: GitHub Actions features that Athanor supports
 | `runner.*` | Runner OS, architecture, temp directory |
 | `job.*` | Current job status |
 | `inputs.*` | Workflow/action inputs |
+| `secrets.*` | Secret values from server configuration |
 
 ## Action Support
 
 | Type | Example | Status |
 |---|---|---|
-| GitHub actions | `actions/checkout@v4` | Supported (built-in shim for checkout) |
+| GitHub actions | `actions/checkout@v4` | Supported (built-in shim) |
+| Setup actions | `actions/setup-node@v4`, `actions/setup-go@v5` | Supported (built-in shim, tools pre-installed) |
+| Artifact actions | `actions/upload-artifact@v4`, `actions/download-artifact@v4` | Supported (built-in shim, local storage) |
 | Local actions | `./my-action` | Supported |
-| Composite actions | `uses:` with `runs.using: composite` | Supported |
+| Composite actions | `runs.using: composite` | Supported |
 | Node.js actions | `runs.using: node20` | Supported (requires Node on PATH) |
 | Docker actions | `docker://image` | Not supported |
 
@@ -87,22 +117,75 @@ description: GitHub Actions features that Athanor supports
 
 | Feature | Description |
 |---|---|
-| GitHub webhooks | Receives `push` and `pull_request` events |
+| GitHub webhooks | Receives `push` and `pull_request` events with branch filtering |
 | Commit statuses | Reports pass/fail via the Statuses API |
 | Checks API | Full log output per workflow (requires GitHub App) |
 | MicroVM isolation | Each job runs in an ephemeral CloudHypervisor VM |
+| Parallel VMs | Independent jobs run concurrently, configurable via `VM_MAX_PARALLEL` |
 | virtiofs sharing | Workspace shared between host and VM |
 | Web dashboard | Real-time build status with per-step log viewing |
 | SSE updates | Live streaming of build progress to the browser |
+| Concurrency groups | Prevents concurrent runs of the same workflow/branch |
+| Secrets management | `SECRET_*` env vars exposed as `secrets.*` context |
+| Artifacts | Local artifact storage shared between jobs |
+| Container jobs | Run steps inside Docker containers |
+| Service containers | Sidecar containers for databases, caches, etc. |
+| Reusable workflows | Call other workflow files with inputs and secrets |
 
-## Not Yet Supported
+## Secrets
 
-| Feature | Notes |
-|---|---|
-| `container:` / `services:` | No Docker containers |
-| Reusable workflows | `workflow_call` not supported |
-| `$GITHUB_PATH` in VMs | PATH modifications within VM sessions |
-| Secrets | `secrets.*` context |
-| Permissions | `permissions:` field |
-| Concurrency | `concurrency:` groups |
-| Artifacts | `actions/upload-artifact`, `actions/download-artifact` |
+Secrets are loaded from environment variables on the server. Any env var prefixed with `SECRET_` is exposed in the `secrets.*` context with the prefix stripped.
+
+For example:
+```bash
+# In /etc/athanor/env
+SECRET_SSH_PRIVATE_KEY=...
+SECRET_STRIPE_KEY=sk_test_...
+```
+
+These become available in workflows as `${{ secrets.SSH_PRIVATE_KEY }}` and `${{ secrets.STRIPE_KEY }}`.
+
+## Container Support
+
+Jobs can specify a Docker container image. All `run:` steps execute inside the container with the workspace mounted:
+
+```yaml
+jobs:
+  test:
+    container: node:20-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm test
+```
+
+Service containers run alongside the job and are accessible via `localhost`:
+
+```yaml
+jobs:
+  test:
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+    steps:
+      - run: pg_isready -h localhost
+```
+
+<Note>
+  Container and service support requires Docker to be installed in the VM rootfs.
+</Note>
+
+## Concurrency
+
+Prevent concurrent runs of the same workflow:
+
+```yaml
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+```
+
+When a new run starts for the same group, the previous run is cancelled.

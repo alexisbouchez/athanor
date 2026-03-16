@@ -59,6 +59,13 @@ func validate(w *Workflow) error {
 		return fmt.Errorf("workflow has no jobs")
 	}
 	for jobID, job := range w.Jobs {
+		// Jobs using reusable workflows have uses: instead of steps:
+		if job.Uses != "" {
+			if len(job.Steps) > 0 {
+				return fmt.Errorf("job %q cannot have both uses: and steps:", jobID)
+			}
+			continue
+		}
 		if len(job.Steps) == 0 {
 			return fmt.Errorf("job %q has no steps", jobID)
 		}
