@@ -9,7 +9,7 @@ The `if:` field on a step controls whether it runs, based on the job's current s
 
 ### `success()` (default)
 
-A step with no `if:` field — or with `if: success()` — runs only when no previous step
+A step with no `if:` field, or with `if: success()`, runs only when no previous step
 in the job has failed:
 
 ```yaml
@@ -36,7 +36,7 @@ Runs only when a previous step has failed:
 
 ### `always()`
 
-Runs regardless of prior step status — useful for cleanup:
+Runs regardless of prior step status. Useful for cleanup:
 
 ```yaml
 - name: Might fail

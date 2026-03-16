@@ -76,7 +76,7 @@ Each CI job runs inside an ephemeral CloudHypervisor microVM. Independent jobs (
 12. Delete rootfs copy
 ```
 
-The workspace is shared bidirectionally via **virtiofs** — the host clones the repo, and the VM sees it at `/workspace`.
+The workspace is shared bidirectionally via **virtiofs**. The host clones the repo, and the VM sees it at `/workspace`.
 
 Networking uses a **TAP device** attached to a Linux bridge (`br0`) with NAT, giving VMs full internet access for downloading dependencies.
 
@@ -84,10 +84,10 @@ Networking uses a **TAP device** attached to a Linux bridge (`br0`) with NAT, gi
 
 The `internal/expr/` package implements a full GitHub Actions expression evaluator:
 
-- **Lexer** — tokenizes expression contents inside `${{ }}`
-- **Parser** — recursive descent producing an AST
-- **Evaluator** — tree-walking with GitHub Actions truthiness rules
-- **Interpolation** — finds `${{ }}` delimiters, evaluates, splices results
+- **Lexer** tokenizes expression contents inside `${{ }}`
+- **Parser** performs recursive descent producing an AST
+- **Evaluator** does tree-walking with GitHub Actions truthiness rules
+- **Interpolation** finds `${{ }}` delimiters, evaluates, and splices results
 
 Supports: context access (`github.sha`), operators (`==`, `!=`, `&&`, `||`, `!`), functions (`contains`, `startsWith`, `format`, `join`, `toJSON`, `fromJSON`, `success`, `failure`, `always`, `cancelled`), index access (`matrix['os']`).
 
@@ -111,9 +111,9 @@ In server mode, the worker drains these events into the `RunStore`, which notifi
 
 Athanor uses two GitHub APIs:
 
-**Checks API** (requires GitHub App) — creates a check run per workflow with full Markdown-formatted log output. Each job and step appears with its status and output in a code block. GitHub displays this in the check run details view.
+**Checks API** (requires GitHub App) creates a check run per workflow with full Markdown-formatted log output. Each job and step appears with its status and output in a code block. GitHub displays this in the check run details view.
 
-**Commit Statuses** (works with PAT) — sets a single `athanor` status on the commit. Always set as a fallback.
+**Commit Statuses** (works with PAT) sets a single `athanor` status on the commit. Always set as a fallback.
 
 Authentication for the Checks API uses standard GitHub App JWT flow:
 1. Sign a JWT with the app's RSA private key
@@ -135,9 +135,9 @@ Level 2: [deploy]            <- depends on test and build
 
 The `internal/action/` package handles `uses:` steps:
 
-1. **Resolve** — parse `owner/repo@version`, `./local/path`, or `docker://image`
-2. **Builtins** — `actions/checkout` has a built-in shim (git checkout)
-3. **Cache** — clone action repos to `~/.cache/athanor/actions/`
-4. **Metadata** — parse `action.yml` for inputs, outputs, runs
-5. **Composite** — execute composite action steps inline
-6. **Node** — execute Node.js actions via `node` (if available)
+1. **Resolve** parses `owner/repo@version`, `./local/path`, or `docker://image`
+2. **Builtins** provide a built-in shim for `actions/checkout` (git checkout)
+3. **Cache** clones action repos to `~/.cache/athanor/actions/`
+4. **Metadata** parses `action.yml` for inputs, outputs, runs
+5. **Composite** executes composite action steps inline
+6. **Node** executes Node.js actions via `node` (if available)

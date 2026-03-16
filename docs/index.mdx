@@ -5,7 +5,7 @@ description: Self-hosted GitHub Actions with CloudHypervisor microVMs
 
 # Athanor
 
-Athanor is a self-hosted CI engine that runs your GitHub Actions workflows inside ephemeral CloudHypervisor microVMs. Push to GitHub, and Athanor receives the webhook, spins up an isolated VM, runs your workflow, and reports the results back — with full logs.
+Athanor is a self-hosted CI engine that runs your GitHub Actions workflows inside ephemeral CloudHypervisor microVMs. Push to GitHub, and Athanor receives the webhook, spins up an isolated VM, runs your workflow, and reports the results back with full logs.
 
 <CardGroup cols={2}>
   <Card title="Installation" icon="download" href="/getting-started/installation">
@@ -35,13 +35,13 @@ Athanor is a self-hosted CI engine that runs your GitHub Actions workflows insid
 
 ## Two Modes
 
-**Server mode** — receives GitHub webhooks, runs workflows in microVMs, reports results. This is how you self-host CI.
+**Server mode** receives GitHub webhooks, runs workflows in microVMs, and reports results. This is how you self-host CI.
 
 ```bash
 athanor serve
 ```
 
-**Local mode** — runs workflows on your machine with a terminal UI. Useful for testing workflows before pushing.
+**Local mode** runs workflows on your machine with a terminal UI. Useful for testing workflows before pushing.
 
 ```bash
 athanor --workflow .github/workflows/ci.yml

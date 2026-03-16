@@ -85,7 +85,7 @@ steps:
 
 ## Environment Variables
 
-Three levels — each inherits from the one above:
+Three levels, where each inherits from the one above:
 
 ```yaml
 env:
@@ -124,7 +124,7 @@ jobs:
 
 ## Notes for Athanor
 
-- `runs-on:` is parsed but not used for image selection — all jobs run in the same rootfs
-- `actions/checkout@v4` has a built-in shim — it runs a `git checkout` on the already-cloned workspace
+- `runs-on:` is parsed but not used for image selection. All jobs run in the same rootfs.
+- `actions/checkout@v4` has a built-in shim. It runs a `git checkout` on the already-cloned workspace.
 - Node.js actions work if `node` is installed in the VM rootfs
 - Docker actions (`docker://`) are not supported

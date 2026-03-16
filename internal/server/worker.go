@@ -423,20 +423,26 @@ func (w *Worker) prepareWorkspace(ctx context.Context, job Job) (string, error) 
 	return dir, nil
 }
 
+func statusMarker(s string) string {
+	switch s {
+	case "success":
+		return "[pass]"
+	case "failure":
+		return "[FAIL]"
+	case "skipped":
+		return "[skip]"
+	case "running":
+		return "[....]"
+	default:
+		return "[----]"
+	}
+}
+
 // buildCheckRunSummary builds a concise Markdown summary table for the GitHub Check Run.
 func buildCheckRunSummary(wf WorkflowRun) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "| Job | Status | Duration |\n|---|---|---|\n")
 	for _, job := range wf.Jobs {
-		icon := "white_check_mark"
-		switch job.Status {
-		case "failure":
-			icon = "x"
-		case "skipped":
-			icon = "fast_forward"
-		case "running":
-			icon = "hourglass_flowing_sand"
-		}
 		dur := ""
 		if job.Duration > 0 {
 			if job.Duration < 60 {
@@ -445,7 +451,7 @@ func buildCheckRunSummary(wf WorkflowRun) string {
 				dur = fmt.Sprintf("%dm %ds", int(job.Duration)/60, int(job.Duration)%60)
 			}
 		}
-		fmt.Fprintf(&b, "| :%s: %s | %s | %s |\n", icon, job.ID, job.Status, dur)
+		fmt.Fprintf(&b, "| %s %s | %s | %s |\n", statusMarker(job.Status), job.ID, job.Status, dur)
 	}
 	return b.String()
 }
@@ -456,26 +462,17 @@ func buildCheckRunLog(wf WorkflowRun) string {
 	for _, job := range wf.Jobs {
 		fmt.Fprintf(&b, "## %s\n\n", job.ID)
 		for _, step := range job.Steps {
-			icon := "white_check_mark"
-			switch step.Status {
-			case "failure":
-				icon = "x"
-			case "skipped":
-				icon = "fast_forward"
-			case "running":
-				icon = "hourglass_flowing_sand"
-			}
 			dur := ""
 			if step.Duration > 0 {
 				dur = fmt.Sprintf(" (%.1fs)", step.Duration)
 			}
-			fmt.Fprintf(&b, "<details%s>\n<summary>:%s: %s%s</summary>\n\n",
+			fmt.Fprintf(&b, "<details%s>\n<summary>%s %s%s</summary>\n\n",
 				func() string {
 					if step.Status == "failure" {
 						return " open"
 					}
 					return ""
-				}(), icon, step.Name, dur)
+				}(), statusMarker(step.Status), step.Name, dur)
 			if len(step.Lines) > 0 {
 				b.WriteString("```\n")
 				for _, line := range step.Lines {

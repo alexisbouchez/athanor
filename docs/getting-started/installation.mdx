@@ -5,7 +5,7 @@ description: Build Athanor and deploy it to a server
 
 ## Prerequisites
 
-- **Go 1.26+** — [install Go](https://go.dev/dl/)
+- **Go 1.26+** ([install Go](https://go.dev/dl/))
 - A **Linux server** with KVM support (for microVM mode)
 
 ## Build from Source
@@ -58,9 +58,9 @@ sudo ./scripts/setup-vps.sh
 ```
 
 This installs:
-- **cloud-hypervisor** — the VMM
-- **virtiofsd** — virtiofs daemon for workspace sharing
-- **Go** — for running workflows that need it
+- **cloud-hypervisor**, the VMM
+- **virtiofsd**, the virtiofs daemon for workspace sharing
+- **Go**, for running workflows that need it
 - Network bridge + NAT for VM internet access
 - Rootfs image (Ubuntu 24.04 with Go, git, SSH)
 

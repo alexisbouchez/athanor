@@ -3,7 +3,7 @@ title: GitHub App Setup
 description: Enable the Checks API for full CI logs on GitHub
 ---
 
-By default, Athanor reports results via **commit statuses** (pass/fail). To get **full log output** visible directly on GitHub — with per-step details, expandable logs, and proper check run annotations — you need to create a **GitHub App**.
+By default, Athanor reports results via **commit statuses** (pass/fail). To get **full log output** visible directly on GitHub, with per-step details, expandable logs, and proper check run annotations, you need to create a **GitHub App**.
 
 This is the standard way to integrate CI systems with GitHub. The Checks API is only available to GitHub Apps, not personal access tokens.
 
@@ -46,7 +46,7 @@ Click **Create GitHub App**.
 
 ## Step 2: Note the App ID
 
-After creation, you'll be on the app's settings page. The **App ID** is displayed near the top — a number like `123456`. Save this.
+After creation, you'll be on the app's settings page. The **App ID** is displayed near the top, a number like `123456`. Save this.
 
 ## Step 3: Generate a Private Key
 
@@ -131,10 +131,10 @@ Push a commit to trigger a build. On GitHub, go to the commit and you'll see a c
 
 Under the hood, Athanor uses standard GitHub App authentication:
 
-1. **JWT generation** — Athanor signs a short-lived JWT with the app's RSA private key
-2. **Token exchange** — the JWT is exchanged for an installation access token via `POST /app/installations/{id}/access_tokens`
-3. **API calls** — the installation token is used to create and update check runs via the Checks API
-4. **Token caching** — tokens are cached and refreshed automatically (they expire after 1 hour)
+1. **JWT generation.** Athanor signs a short-lived JWT with the app's RSA private key.
+2. **Token exchange.** The JWT is exchanged for an installation access token via `POST /app/installations/{id}/access_tokens`.
+3. **API calls.** The installation token is used to create and update check runs via the Checks API.
+4. **Token caching.** Tokens are cached and refreshed automatically (they expire after 1 hour).
 
 The PAT-based commit status is always set as a fallback, so even if the GitHub App fails, you still get pass/fail reporting.
 
