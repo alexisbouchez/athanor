@@ -80,12 +80,13 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 			envExports.String(), shellQuote(workDir), script, shell,
 		)
 
-		// Set up stdout/stderr streaming
+		// Merge stderr into stdout via shell redirect so all output is captured
+		remoteScript += " 2>&1"
+
 		stdout, err := session.StdoutPipe()
 		if err != nil {
 			return nil, fmt.Errorf("stdout pipe: %w", err)
 		}
-		session.Stderr = session.Stdout
 
 		if err := session.Start(remoteScript); err != nil {
 			return nil, fmt.Errorf("starting command: %w", err)
