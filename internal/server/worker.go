@@ -35,6 +35,7 @@ type Worker struct {
 	lifecycle   runner.JobLifecycle
 	store       *RunStore
 	concurrency *ConcurrencyManager
+	secrets     *SecretStore
 }
 
 // NewWorker creates a new job worker.
@@ -192,7 +193,7 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		}
 
 		runCtx := runner.NewRunContextWith(ghCtx)
-		runCtx.Secrets = w.cfg.Secrets
+		runCtx.Secrets = w.secrets.Merge(w.cfg.Secrets, job.RepoFullName)
 		var r *runner.Runner
 		if w.lifecycle != nil {
 			r = runner.NewRunnerWithLifecycle(wf, runCtx, w.lifecycle)

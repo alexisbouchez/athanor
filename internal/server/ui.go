@@ -106,6 +106,7 @@ nav { display: flex; gap: 0.75rem; align-items: center; }
   <h1>Athanor</h1>
   <nav>
     <span class="live-dot" id="liveDot"></span>
+    <a class="nav-link" href="/settings">settings</a>
     <a class="nav-link" href="https://github.com/alexisbouchez/athanor">github</a>
     <button class="toggle" onclick="toggleTheme()" id="themeBtn"></button>
   </nav>

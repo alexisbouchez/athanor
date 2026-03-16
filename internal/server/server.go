@@ -11,6 +11,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -101,11 +102,12 @@ func envOrInt(key string, fallback int) int {
 
 // Server is the webhook HTTP server.
 type Server struct {
-	cfg    *Config
-	worker *Worker
-	gh     *GitHubClient
-	logger *log.Logger
-	mux    *http.ServeMux
+	cfg     *Config
+	worker  *Worker
+	gh      *GitHubClient
+	logger  *log.Logger
+	mux     *http.ServeMux
+	secrets *SecretStore
 }
 
 // New creates a new server.
@@ -131,12 +133,21 @@ func New(cfg *Config) *Server {
 	worker := NewWorker(cfg, gh, logger)
 	worker.store = store
 
+	secretsPath := filepath.Join(cfg.WorkspaceDir, "secrets.json")
+	secretStore, err := NewSecretStore(secretsPath)
+	if err != nil {
+		logger.Printf("Warning: failed to load secrets store: %v", err)
+		secretStore, _ = NewSecretStore(filepath.Join(os.TempDir(), "athanor-secrets.json"))
+	}
+	worker.secrets = secretStore
+
 	s := &Server{
-		cfg:    cfg,
-		worker: worker,
-		gh:     gh,
-		logger: logger,
-		mux:    http.NewServeMux(),
+		cfg:     cfg,
+		worker:  worker,
+		gh:      gh,
+		logger:  logger,
+		mux:     http.NewServeMux(),
+		secrets: secretStore,
 	}
 
 	s.mux.HandleFunc("GET /health", s.handleHealth)
@@ -145,8 +156,13 @@ func New(cfg *Config) *Server {
 	s.mux.HandleFunc("GET /api/events", s.requireAuth(s.handleSSE))
 	s.mux.HandleFunc("GET /font/regular.woff2", s.handleFontRegular)
 	s.mux.HandleFunc("GET /font/bold.woff2", s.handleFontBold)
+	s.mux.HandleFunc("GET /api/secrets", s.requireAuth(s.handleListSecrets))
+	s.mux.HandleFunc("GET /api/secrets/", s.requireAuth(s.handleGetSecrets))
+	s.mux.HandleFunc("PUT /api/secrets/", s.requireAuth(s.handlePutSecrets))
+	s.mux.HandleFunc("DELETE /api/secrets/", s.requireAuth(s.handleDeleteSecret))
 	s.mux.HandleFunc("GET /login", s.handleLogin)
 	s.mux.HandleFunc("POST /login", s.handleLoginPost)
+	s.mux.HandleFunc("GET /settings", s.requireAuth(s.handleSettings))
 	s.mux.HandleFunc("GET /", s.requireAuth(s.handleUI))
 
 	return s
@@ -234,6 +250,73 @@ func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusUnauthorized)
 	w.Write([]byte(loginHTML))
+}
+
+// --- Secrets API ---
+
+// GET /api/secrets - list repos that have secrets
+func (s *Server) handleListSecrets(w http.ResponseWriter, r *http.Request) {
+	repos := s.secrets.ListRepos()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(repos)
+}
+
+// GET /api/secrets/{repo} - list secret keys for a repo (values masked)
+func (s *Server) handleGetSecrets(w http.ResponseWriter, r *http.Request) {
+	repo := strings.TrimPrefix(r.URL.Path, "/api/secrets/")
+	if repo == "" {
+		http.Error(w, "repo required", http.StatusBadRequest)
+		return
+	}
+	keys := s.secrets.Keys(repo)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(keys)
+}
+
+// PUT /api/secrets/{repo} - add/update secrets for a repo (merges with existing)
+// Body: {"KEY": "value", ...}
+func (s *Server) handlePutSecrets(w http.ResponseWriter, r *http.Request) {
+	repo := strings.TrimPrefix(r.URL.Path, "/api/secrets/")
+	if repo == "" {
+		http.Error(w, "repo required", http.StatusBadRequest)
+		return
+	}
+	var incoming map[string]string
+	if err := json.NewDecoder(r.Body).Decode(&incoming); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+	for k, v := range incoming {
+		if err := s.secrets.Set(repo, k, v); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+	s.logger.Printf("Secrets updated for %s (%d keys added/updated)", repo, len(incoming))
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "ok")
+}
+
+// DELETE /api/secrets/{repo}?key=NAME - delete a single secret
+func (s *Server) handleDeleteSecret(w http.ResponseWriter, r *http.Request) {
+	repo := strings.TrimPrefix(r.URL.Path, "/api/secrets/")
+	key := r.URL.Query().Get("key")
+	if repo == "" || key == "" {
+		http.Error(w, "repo and key required", http.StatusBadRequest)
+		return
+	}
+	if err := s.secrets.Delete(repo, key); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintln(w, "ok")
+}
+
+// GET /settings - settings page
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(settingsHTML))
 }
 
 func (s *Server) handleFontRegular(w http.ResponseWriter, r *http.Request) {
