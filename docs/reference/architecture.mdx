@@ -59,7 +59,7 @@ GitHub webhook POST
 
 ## MicroVM Lifecycle
 
-Each CI job runs inside an ephemeral CloudHypervisor microVM:
+Each CI job runs inside an ephemeral CloudHypervisor microVM. Independent jobs (no `needs:` dependency between them) run in parallel, each in its own VM. The number of concurrent VMs is auto-detected from host RAM or set via `VM_MAX_PARALLEL`.
 
 ```
 1. Copy rootfs image       (ext4, ~4GB)

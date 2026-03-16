@@ -49,12 +49,13 @@ func NewWorker(cfg *Config, gh *GitHubClient, logger *log.Logger) *Worker {
 		os.MkdirAll(cfg.VMDiskDir, 0o755)
 		network := vmm.NewNetwork("br0")
 		w.lifecycle = vmm.NewVMJobLifecycle(vmm.VMJobConfig{
-			KernelPath: cfg.KernelPath,
-			RootfsPath: cfg.RootfsPath,
-			SSHKeyPath: cfg.SSHKeyPath,
-			DiskDir:    cfg.VMDiskDir,
-			CPUs:       cfg.VMCPUs,
-			MemoryMB:   cfg.VMMemoryMB,
+			KernelPath:  cfg.KernelPath,
+			RootfsPath:  cfg.RootfsPath,
+			SSHKeyPath:  cfg.SSHKeyPath,
+			DiskDir:     cfg.VMDiskDir,
+			CPUs:        cfg.VMCPUs,
+			MemoryMB:    cfg.VMMemoryMB,
+			MaxParallel: cfg.VMMaxParallel,
 		}, network)
 		logger.Printf("VM mode enabled (kernel=%s, rootfs=%s)", cfg.KernelPath, cfg.RootfsPath)
 	} else {

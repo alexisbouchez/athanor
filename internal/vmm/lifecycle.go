@@ -7,19 +7,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/alexj212/athanor/internal/runner"
 )
 
-// VMConfig holds configuration for VM-based job execution.
+// VMJobConfig holds configuration for VM-based job execution.
 type VMJobConfig struct {
-	KernelPath string
-	RootfsPath string
-	SSHKeyPath string
-	DiskDir    string // directory for per-VM rootfs copies
-	CPUs       int
-	MemoryMB   int
+	KernelPath  string
+	RootfsPath  string
+	SSHKeyPath  string
+	DiskDir     string // directory for per-VM rootfs copies
+	CPUs        int
+	MemoryMB    int
+	MaxParallel int // max concurrent VMs (0 = auto)
 }
 
 // VMJobLifecycle implements runner.JobLifecycle using CloudHypervisor microVMs.
@@ -40,15 +42,20 @@ type vmState struct {
 
 // NewVMJobLifecycle creates a new VM lifecycle manager.
 func NewVMJobLifecycle(cfg VMJobConfig, network *Network) *VMJobLifecycle {
-	// Limit concurrent VMs based on available memory (1 VM per GB, minimum 1)
-	maxVMs := cfg.MemoryMB / 1024
+	maxVMs := cfg.MaxParallel
+	if maxVMs <= 0 {
+		// Auto: estimate from host memory (~1.5GB overhead for OS + athanor)
+		hostMemMB := getHostMemoryMB()
+		availableMB := hostMemMB - 1536
+		if availableMB < cfg.MemoryMB {
+			availableMB = cfg.MemoryMB
+		}
+		maxVMs = availableMB / cfg.MemoryMB
+	}
 	if maxVMs < 1 {
 		maxVMs = 1
 	}
-	// Cap at 3 to be safe
-	if maxVMs > 3 {
-		maxVMs = 3
-	}
+	log.New(os.Stderr, "[vmm] ", log.LstdFlags).Printf("Max parallel VMs: %d", maxVMs)
 	return &VMJobLifecycle{
 		cfg:     cfg,
 		network: network,
@@ -187,6 +194,21 @@ func sanitizeID(id string) string {
 		result = result[:32]
 	}
 	return string(result)
+}
+
+func getHostMemoryMB() int {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return 4096 // fallback 4GB
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "MemTotal:") {
+			var kb int
+			fmt.Sscanf(line, "MemTotal: %d kB", &kb)
+			return kb / 1024
+		}
+	}
+	return 4096
 }
 
 func copyFile(src, dst string) error {

@@ -26,8 +26,9 @@ type Config struct {
 	RootfsPath string
 	SSHKeyPath string
 	VMDiskDir  string
-	VMCPUs     int
-	VMMemoryMB int
+	VMCPUs        int
+	VMMemoryMB    int
+	VMMaxParallel int
 }
 
 // UseVMs returns true if VM mode is configured.
@@ -48,6 +49,7 @@ func LoadConfig() (*Config, error) {
 		VMDiskDir:     envOr("VM_DISK_DIR", "/var/lib/athanor/vm-disks"),
 		VMCPUs:        envOrInt("VM_CPUS", 2),
 		VMMemoryMB:    envOrInt("VM_MEMORY_MB", 2048),
+		VMMaxParallel: envOrInt("VM_MAX_PARALLEL", 0),
 	}
 	if cfg.WebhookSecret == "" {
 		return nil, fmt.Errorf("WEBHOOK_SECRET environment variable is required")
