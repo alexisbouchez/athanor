@@ -3,9 +3,9 @@
   "name": "Athanor",
   "theme": "mint",
   "colors": {
-    "primary": "#E05D00",
-    "light": "#F28C38",
-    "dark": "#C24D00"
+    "primary": "#000000",
+    "light": "#555555",
+    "dark": "#ffffff"
   },
   "modeToggle": {
     "default": "dark",

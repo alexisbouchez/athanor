@@ -48,10 +48,10 @@ A single step can write multiple outputs:
 
 ## How It Works Internally
 
-1. Before each step, athanor creates a temp file and sets the `GITHUB_OUTPUT`
+1. Before each step, Athanor creates a temp file and sets the `GITHUB_OUTPUT`
    environment variable to its path
 2. The step script appends `key=value` lines to this file
-3. After the step exits, athanor reads the file and records the outputs
+3. After the step exits, Athanor reads the file and records the outputs
 4. Expression patterns in subsequent steps are expanded via string replacement
 
 <Info>

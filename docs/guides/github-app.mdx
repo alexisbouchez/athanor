@@ -3,7 +3,7 @@ title: GitHub App Setup
 description: Enable the Checks API for full CI logs on GitHub
 ---
 
-By default, athanor reports results via **commit statuses** (pass/fail). To get **full log output** visible directly on GitHub — with per-step details, expandable logs, and proper check run annotations — you need to create a **GitHub App**.
+By default, Athanor reports results via **commit statuses** (pass/fail). To get **full log output** visible directly on GitHub — with per-step details, expandable logs, and proper check run annotations — you need to create a **GitHub App**.
 
 This is the standard way to integrate CI systems with GitHub. The Checks API is only available to GitHub Apps, not personal access tokens.
 
@@ -25,7 +25,7 @@ Go to [github.com/settings/apps/new](https://github.com/settings/apps/new) and f
 |---|---|
 | **GitHub App name** | `athanor-ci` (or any name you want) |
 | **Homepage URL** | `http://your-server-ip:8080` |
-| **Webhook** | **Uncheck** "Active" (athanor has its own webhook handler) |
+| **Webhook** | **Uncheck** "Active" (Athanor has its own webhook handler) |
 
 ### Permissions
 
@@ -52,7 +52,7 @@ After creation, you'll be on the app's settings page. The **App ID** is displaye
 
 On the same settings page, scroll to **Private keys** and click **Generate a private key**.
 
-A `.pem` file downloads to your machine. This is the private key athanor uses to authenticate as the app. Keep it safe.
+A `.pem` file downloads to your machine. This is the private key Athanor uses to authenticate as the app. Keep it safe.
 
 ## Step 4: Install the App
 
@@ -82,7 +82,7 @@ It will:
 1. Upload the private key to the server
 2. Look up the installation ID automatically
 3. Update the server config
-4. Restart athanor
+4. Restart Athanor
 
 ### Manual Configuration
 
@@ -129,9 +129,9 @@ Push a commit to trigger a build. On GitHub, go to the commit and you'll see a c
 
 ## How It Works
 
-Under the hood, athanor uses standard GitHub App authentication:
+Under the hood, Athanor uses standard GitHub App authentication:
 
-1. **JWT generation** — athanor signs a short-lived JWT with the app's RSA private key
+1. **JWT generation** — Athanor signs a short-lived JWT with the app's RSA private key
 2. **Token exchange** — the JWT is exchanged for an installation access token via `POST /app/installations/{id}/access_tokens`
 3. **API calls** — the installation token is used to create and update check runs via the Checks API
 4. **Token caching** — tokens are cached and refreshed automatically (they expire after 1 hour)

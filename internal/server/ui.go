@@ -6,7 +6,7 @@ const indexHTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>athanor</title>
+<title>Athanor</title>
 <style>
 @font-face {
   font-family: 'Ioskeley Mono';
@@ -205,7 +205,7 @@ h1 { font-size: 18px; }
 <body>
 
 <header>
-  <h1>athanor</h1>
+  <h1>Athanor</h1>
   <button class="toggle" onclick="toggleTheme()" id="themeBtn"></button>
 </header>
 <p class="subtitle">self-hosted ci &middot; cloudhypervisor microvms</p>
