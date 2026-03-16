@@ -293,8 +293,8 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 		}()
 	}
 
-	// Build job-level env
-	env := NewEnv(rc.DefaultEnvVars(jobID, ""), r.wf.Env, job.Env)
+	// Build job-level env (default vars + context env/secrets + workflow env + job env)
+	env := NewEnv(rc.DefaultEnvVars(jobID, ""), rc.Env, r.wf.Env, job.Env)
 
 	// Track extra env from GITHUB_ENV and extra PATH from GITHUB_PATH
 	var extraEnv map[string]string
