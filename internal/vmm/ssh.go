@@ -57,15 +57,18 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 			case strings.HasPrefix(key, "CI"):
 			case strings.HasPrefix(key, "RUNNER_"):
 			case strings.HasPrefix(key, "INPUT_"):
+			case key == "HOME":
+			case key == "GOPATH":
+			case key == "GOMODCACHE":
 			default:
 				continue
 			}
 			envExports.WriteString(fmt.Sprintf("export %s=%s\n", key, shellQuote(parts[1])))
 		}
 
-		// Ensure workspace is mounted (virtiofs), then run the script
+		// Ensure workspace is mounted (virtiofs) and git is safe, then run the script
 		remoteScript := fmt.Sprintf(
-			"modprobe virtiofs 2>/dev/null; mount -t virtiofs workspace /workspace 2>/dev/null; %scd %s && cat > /tmp/athanor-step.sh << 'ATHANOR_SCRIPT_EOF'\n%s\nATHANOR_SCRIPT_EOF\n%s /tmp/athanor-step.sh",
+			"modprobe virtiofs 2>/dev/null; mount -t virtiofs workspace /workspace 2>/dev/null; git config --global safe.directory '*' 2>/dev/null; %scd %s && cat > /tmp/athanor-step.sh << 'ATHANOR_SCRIPT_EOF'\n%s\nATHANOR_SCRIPT_EOF\n%s /tmp/athanor-step.sh",
 			envExports.String(), shellQuote(workDir), script, shell,
 		)
 
