@@ -237,6 +237,9 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 	if r.lifecycle != nil {
 		fn, vmWorkspace, err := r.lifecycle.Setup(ctx, jobID, r.runCtx.GitHub.Workspace)
 		if err != nil {
+			r.events <- StepStarted{JobID: jobID, StepIdx: 0, StepName: "VM Setup"}
+			r.events <- StepOutput{JobID: jobID, StepIdx: 0, Line: fmt.Sprintf("Failed to set up VM: %v", err)}
+			r.events <- StepFinished{JobID: jobID, StepIdx: 0, ExitCode: 1, Error: err.Error()}
 			r.events <- JobFinished{JobID: jobID, Status: "failure"}
 			return &JobResult{Status: "failure"}
 		}
@@ -362,6 +365,7 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 		}
 
 		if stepErr != nil {
+			r.events <- StepOutput{JobID: jobID, StepIdx: i, Line: fmt.Sprintf("[debug] step %d error: %v", i, stepErr)}
 			r.events <- StepFinished{JobID: jobID, StepIdx: i, ExitCode: 1, Error: stepErr.Error()}
 			if !step.ContinueOnError {
 				jobFailed = true
@@ -371,9 +375,11 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 			continue
 		}
 
+		r.events <- StepOutput{JobID: jobID, StepIdx: i, Line: fmt.Sprintf("[debug] step %d finished, exitCode=%d", i, exitCode)}
 		r.events <- StepFinished{JobID: jobID, StepIdx: i, ExitCode: exitCode}
 
 		if exitCode != 0 && !step.ContinueOnError {
+			r.events <- StepOutput{JobID: jobID, StepIdx: i, Line: fmt.Sprintf("[debug] step %d failed, breaking", i)}
 			jobFailed = true
 			rc.Job.Status = "failure"
 			break
@@ -463,10 +469,19 @@ func (r *Runner) runRunStep(ctx context.Context, jobID string, stepIdx int, step
 	summaryFile.Close()
 	defer os.Remove(summaryPath)
 
-	stepEnv.Set("GITHUB_OUTPUT", outputPath)
-	stepEnv.Set("GITHUB_ENV", envPath)
-	stepEnv.Set("GITHUB_PATH", pathPath)
-	stepEnv.Set("GITHUB_STEP_SUMMARY", summaryPath)
+	// When running in a VM, use VM-local paths for temp files since the host paths
+	// are inaccessible from inside the VM. Output parsing is skipped for VM jobs.
+	if r.lifecycle != nil {
+		stepEnv.Set("GITHUB_OUTPUT", "/tmp/gh-output")
+		stepEnv.Set("GITHUB_ENV", "/tmp/gh-env")
+		stepEnv.Set("GITHUB_PATH", "/tmp/gh-path")
+		stepEnv.Set("GITHUB_STEP_SUMMARY", "/tmp/gh-summary")
+	} else {
+		stepEnv.Set("GITHUB_OUTPUT", outputPath)
+		stepEnv.Set("GITHUB_ENV", envPath)
+		stepEnv.Set("GITHUB_PATH", pathPath)
+		stepEnv.Set("GITHUB_STEP_SUMMARY", summaryPath)
+	}
 
 	// Apply extra PATH
 	if len(extraPath) > 0 {
@@ -503,7 +518,7 @@ func (r *Runner) runRunStep(ctx context.Context, jobID string, stepIdx int, step
 	lineWg.Wait()
 
 	if execErr != nil {
-		return 1, nil, execErr
+		return 1, nil, fmt.Errorf("exec error: %w", execErr)
 	}
 
 	// Parse outputs

@@ -6,15 +6,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Environment
+      - name: Debug workspace
         run: |
-          echo "CI=$CI"
-          echo "Repository: $GITHUB_REPOSITORY"
-          echo "SHA: $GITHUB_SHA"
-          echo "Ref: $GITHUB_REF"
-          echo "Hostname: $(hostname)"
-          go version
-          uname -a
+          echo "pwd: $(pwd)"
+          echo "ls workspace:"
+          ls -la /workspace/ 2>&1 | head -10
+          echo "mount info:"
+          mount | grep workspace || echo "no workspace mount"
+          echo "go.mod:"
+          cat /workspace/go.mod 2>&1 | head -5 || echo "no go.mod"
       - name: Build
         run: go build ./...
       - name: Test

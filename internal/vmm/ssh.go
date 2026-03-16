@@ -27,16 +27,7 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 		}
 		defer session.Close()
 
-		// Set environment variables
-		for _, env := range opts.Env {
-			parts := strings.SplitN(env, "=", 2)
-			if len(parts) == 2 {
-				session.Setenv(parts[0], parts[1])
-			}
-		}
-
 		// Build the command to run
-		// Write script to a temp file on the remote, then execute it
 		shell := opts.Shell
 		if shell == "" || shell == "__node__" {
 			shell = "bash"
@@ -47,10 +38,35 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 			workDir = "/workspace"
 		}
 
-		// Escape the script for heredoc
+		// Build env export block (SSH Setenv is usually disabled)
+		// Only export CI-relevant vars, not the entire host environment
+		var envExports strings.Builder
+		for _, env := range opts.Env {
+			parts := strings.SplitN(env, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := parts[0]
+			// Skip host-only vars and large vars that break SSH
+			switch {
+			case key == "PATH":
+				// Use VM's PATH, don't override
+				continue
+			case strings.HasPrefix(key, "GITHUB_"):
+				// Always export GITHUB_* vars
+			case strings.HasPrefix(key, "CI"):
+			case strings.HasPrefix(key, "RUNNER_"):
+			case strings.HasPrefix(key, "INPUT_"):
+			default:
+				continue
+			}
+			envExports.WriteString(fmt.Sprintf("export %s=%s\n", key, shellQuote(parts[1])))
+		}
+
+		// Ensure workspace is mounted (virtiofs), then run the script
 		remoteScript := fmt.Sprintf(
-			"cd %s && cat > /tmp/athanor-step.sh << 'ATHANOR_SCRIPT_EOF'\n%s\nATHANOR_SCRIPT_EOF\n%s /tmp/athanor-step.sh",
-			shellQuote(workDir), script, shell,
+			"modprobe virtiofs 2>/dev/null; mount -t virtiofs workspace /workspace 2>/dev/null; %scd %s && cat > /tmp/athanor-step.sh << 'ATHANOR_SCRIPT_EOF'\n%s\nATHANOR_SCRIPT_EOF\n%s /tmp/athanor-step.sh",
+			envExports.String(), shellQuote(workDir), script, shell,
 		)
 
 		// Set up stdout/stderr streaming

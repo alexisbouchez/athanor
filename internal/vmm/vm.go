@@ -88,15 +88,18 @@ func NewVM(opts VMOptions) *VM {
 
 	socketPath := filepath.Join(opts.SocketDir, fmt.Sprintf("athanor-vm-%s.sock", opts.ID))
 
-	// Kernel cmdline with static IP configuration
+	// Kernel cmdline — IP is configured via systemd-networkd + startup script
 	cmdline := fmt.Sprintf(
-		"console=ttyS0 root=/dev/vda rw ip=%s::192.168.100.1:255.255.255.0::eth0:off nameserver=8.8.8.8",
+		"console=ttyS0 root=/dev/vda rw vmip=%s",
 		opts.IP,
 	)
 
+	// Enable shared memory if virtiofs is used
+	shared := opts.VirtioFSSock != ""
+
 	config := VMCreateConfig{
 		CPUs:   CPUsConfig{BootVCPUs: uint32(opts.CPUs), MaxVCPUs: uint32(opts.CPUs)},
-		Memory: MemoryConfig{Size: uint64(opts.MemoryMB) * 1024 * 1024},
+		Memory: MemoryConfig{Size: uint64(opts.MemoryMB) * 1024 * 1024, Shared: shared},
 		Payload: PayloadConfig{
 			Kernel:  opts.KernelPath,
 			Cmdline: cmdline,
@@ -140,7 +143,10 @@ func (vm *VM) Start(ctx context.Context) error {
 	os.Remove(vm.SocketPath)
 
 	// Launch cloud-hypervisor process
-	vm.process = exec.CommandContext(ctx, "cloud-hypervisor", "--api-socket", vm.SocketPath)
+	vm.process = exec.CommandContext(ctx, "cloud-hypervisor",
+		"--api-socket", vm.SocketPath,
+		"--seccomp", "false",
+	)
 	vm.process.Stdout = os.Stderr
 	vm.process.Stderr = os.Stderr
 	if err := vm.process.Start(); err != nil {

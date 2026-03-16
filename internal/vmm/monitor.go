@@ -58,7 +58,8 @@ type CPUsConfig struct {
 
 // MemoryConfig describes memory allocation.
 type MemoryConfig struct {
-	Size uint64 `json:"size"`
+	Size   uint64 `json:"size"`
+	Shared bool   `json:"shared,omitempty"`
 }
 
 // PayloadConfig describes the kernel/initramfs payload.
