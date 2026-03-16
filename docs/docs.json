@@ -5,11 +5,7 @@
   "colors": {
     "primary": "#E05D00",
     "light": "#F28C38",
-    "dark": "#C24D00",
-    "background": {
-      "light": "#FAFAFA",
-      "dark": "#111111"
-    }
+    "dark": "#C24D00"
   },
   "modeToggle": {
     "default": "dark",
@@ -25,35 +21,37 @@
     "type": "github",
     "url": "https://github.com/alexisbouchez/athanor"
   },
-  "navigation": [
-    {
-      "group": "Getting Started",
-      "pages": [
-        "index",
-        "getting-started/installation",
-        "getting-started/quickstart",
-        "getting-started/writing-workflows"
-      ]
-    },
-    {
-      "group": "Guides",
-      "pages": [
-        "guides/github-app",
-        "guides/workflow-features",
-        "guides/job-dependencies",
-        "guides/step-outputs",
-        "guides/conditions-and-errors"
-      ]
-    },
-    {
-      "group": "Reference",
-      "pages": [
-        "reference/cli",
-        "reference/architecture",
-        "reference/supported-features"
-      ]
-    }
-  ],
+  "navigation": {
+    "groups": [
+      {
+        "group": "Getting Started",
+        "pages": [
+          "index",
+          "getting-started/installation",
+          "getting-started/quickstart",
+          "getting-started/writing-workflows"
+        ]
+      },
+      {
+        "group": "Guides",
+        "pages": [
+          "guides/github-app",
+          "guides/workflow-features",
+          "guides/job-dependencies",
+          "guides/step-outputs",
+          "guides/conditions-and-errors"
+        ]
+      },
+      {
+        "group": "Reference",
+        "pages": [
+          "reference/cli",
+          "reference/architecture",
+          "reference/supported-features"
+        ]
+      }
+    ]
+  },
   "footerSocials": {
     "github": "https://github.com/alexisbouchez/athanor"
   },
