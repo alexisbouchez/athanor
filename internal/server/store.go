@@ -47,9 +47,9 @@ type JobRun struct {
 
 // StepRun represents a step within a job run.
 type StepRun struct {
-	Name   string `json:"name"`
-	Status string `json:"status"`
-	Log    string `json:"log,omitempty"`
+	Name   string   `json:"name"`
+	Status string   `json:"status"`
+	Lines  []string `json:"lines,omitempty"`
 }
 
 // NewRunStore creates a store that keeps the last N runs.

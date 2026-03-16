@@ -28,6 +28,7 @@ const indexHTML = `<!DOCTYPE html>
   --fg3: #777;
   --border: #d4d4d4;
   --run-bg: #fff;
+  --log-bg: #f0f0ee;
   --green: #1a7f37;
   --red: #cf222e;
   --blue: #0969da;
@@ -44,6 +45,7 @@ const indexHTML = `<!DOCTYPE html>
     --fg3: #888;
     --border: #2a2a2a;
     --run-bg: #141414;
+    --log-bg: #1a1a1a;
     --green: #3fb950;
     --red: #f85149;
     --blue: #58a6ff;
@@ -60,6 +62,7 @@ html[data-theme="light"] {
   --fg3: #777;
   --border: #d4d4d4;
   --run-bg: #fff;
+  --log-bg: #f0f0ee;
   --green: #1a7f37;
   --red: #cf222e;
   --blue: #0969da;
@@ -75,6 +78,7 @@ html[data-theme="dark"] {
   --fg3: #888;
   --border: #2a2a2a;
   --run-bg: #141414;
+  --log-bg: #1a1a1a;
   --green: #3fb950;
   --red: #f85149;
   --blue: #58a6ff;
@@ -153,8 +157,38 @@ h1 { font-size: 18px; }
 .workflow-name { font-weight: 700; font-size: 13px; }
 .job { margin: 0.25rem 0 0.25rem 1rem; }
 .job-id { color: var(--fg2); }
-.step { margin-left: 1rem; color: var(--fg3); font-size: 12px; }
-.step .glyph { display: inline-block; width: 14px; text-align: center; }
+
+.step {
+  margin-left: 1rem;
+  font-size: 12px;
+}
+.step-header {
+  color: var(--fg3);
+  cursor: pointer;
+  user-select: none;
+}
+.step-header:hover { color: var(--fg2); }
+.step-header .glyph { display: inline-block; width: 14px; text-align: center; }
+.step-header .has-log { border-bottom: 1px dotted var(--muted); }
+
+.step-log {
+  display: none;
+  background: var(--log-bg);
+  border: 1px solid var(--border);
+  padding: 0.5rem;
+  margin: 0.25rem 0 0.5rem 1rem;
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre;
+  color: var(--fg2);
+  max-height: 400px;
+  overflow-y: auto;
+}
+.step-log.open { display: block; }
+
+.log-line { display: block; }
+.log-line:hover { background: var(--border); }
 
 .g-success { color: var(--green); }
 .g-failure { color: var(--red); }
@@ -223,7 +257,21 @@ function dur(d) {
   return Math.floor(d/60) + 'm ' + Math.floor(d%60) + 's';
 }
 
-function renderRun(r) {
+let openLogs = new Set();
+
+function toggleLog(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    openLogs.delete(id);
+  } else {
+    el.classList.add('open');
+    openLogs.add(id);
+  }
+}
+
+function renderRun(r, ri) {
   let h = '<div class="run">';
   h += '<div class="run-header">';
   h += '<span>' + glyph(r.status) + ' <span class="run-sha">' + r.sha.slice(0,8) + '</span>';
@@ -235,15 +283,33 @@ function renderRun(r) {
   h += '<div class="run-actor">' + esc(r.actor) + ' &middot; ' + r.event + ' &middot; <span class="status status-' + r.status + '">' + r.status + '</span></div>';
 
   if (r.workflows) {
-    for (const wf of r.workflows) {
+    for (let wi = 0; wi < r.workflows.length; wi++) {
+      const wf = r.workflows[wi];
       h += '<div class="workflow">';
       h += glyph(wf.status) + ' <span class="workflow-name">' + esc(wf.name) + '</span>';
       if (wf.jobs) {
-        for (const j of wf.jobs) {
+        for (let ji = 0; ji < wf.jobs.length; ji++) {
+          const j = wf.jobs[ji];
           h += '<div class="job">' + glyph(j.status) + ' <span class="job-id">' + esc(j.id) + '</span>';
           if (j.steps) {
-            for (const s of j.steps) {
-              h += '<div class="step">' + glyph(s.status) + ' ' + esc(s.name) + '</div>';
+            for (let si = 0; si < j.steps.length; si++) {
+              const s = j.steps[si];
+              const logId = 'log-' + ri + '-' + wi + '-' + ji + '-' + si;
+              const hasLog = s.lines && s.lines.length > 0;
+              const isOpen = openLogs.has(logId);
+              h += '<div class="step">';
+              h += '<div class="step-header" onclick="toggleLog(\'' + logId + '\')">';
+              h += glyph(s.status) + ' <span' + (hasLog ? ' class="has-log"' : '') + '>' + esc(s.name) + '</span>';
+              if (hasLog) h += ' <span style="color:var(--muted);font-size:10px">(' + s.lines.length + ' lines)</span>';
+              h += '</div>';
+              if (hasLog) {
+                h += '<div class="step-log' + (isOpen ? ' open' : '') + '" id="' + logId + '">';
+                for (const line of s.lines) {
+                  h += '<span class="log-line">' + esc(line) + '</span>';
+                }
+                h += '</div>';
+              }
+              h += '</div>';
             }
           }
           h += '</div>';
@@ -269,7 +335,7 @@ function render(runs) {
     el.innerHTML = '<div class="empty">no runs yet &mdash; push to trigger a build</div>';
     return;
   }
-  el.innerHTML = runs.map(renderRun).join('');
+  el.innerHTML = runs.map((r, i) => renderRun(r, i)).join('');
 }
 
 fetch('/api/runs').then(r => r.json()).then(render);
