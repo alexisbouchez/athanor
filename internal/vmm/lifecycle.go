@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 
@@ -88,6 +89,7 @@ func (l *VMJobLifecycle) Setup(ctx context.Context, jobID string, hostWorkspace 
 	})
 
 	if err := vm.Start(ctx); err != nil {
+		l.logger.Printf("Failed to start VM: %v", err)
 		vfs.Stop()
 		l.network.FreeTap(ctx, safeID)
 		os.Remove(diskPath)
@@ -95,7 +97,9 @@ func (l *VMJobLifecycle) Setup(ctx context.Context, jobID string, hostWorkspace 
 	}
 
 	// 5. Wait for SSH
+	l.logger.Printf("Waiting for SSH on %s:22...", ipAddr)
 	if err := vm.WaitSSH(ctx); err != nil {
+		l.logger.Printf("SSH wait failed: %v", err)
 		vm.Destroy(ctx)
 		vfs.Stop()
 		l.network.FreeTap(ctx, safeID)
@@ -165,9 +169,9 @@ func sanitizeID(id string) string {
 }
 
 func copyFile(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return err
+	cmd := exec.Command("cp", "--reflink=auto", src, dst)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("cp %s %s: %s: %w", src, dst, string(out), err)
 	}
-	return os.WriteFile(dst, data, 0o644)
+	return nil
 }

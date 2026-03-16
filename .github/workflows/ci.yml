@@ -12,7 +12,9 @@ jobs:
           echo "Repository: $GITHUB_REPOSITORY"
           echo "SHA: $GITHUB_SHA"
           echo "Ref: $GITHUB_REF"
+          echo "Hostname: $(hostname)"
           go version
+          uname -a
       - name: Build
         run: go build ./...
       - name: Test
