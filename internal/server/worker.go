@@ -193,7 +193,12 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		}
 
 		runCtx := runner.NewRunContextWith(ghCtx)
-		runCtx.Secrets = w.secrets.Merge(w.cfg.Secrets, job.RepoFullName)
+		mergedSecrets := w.secrets.Merge(w.cfg.Secrets, job.RepoFullName)
+		runCtx.Secrets = mergedSecrets
+		// Also inject secrets as environment variables so they're available in run: steps
+		for k, v := range mergedSecrets {
+			runCtx.Env[k] = v
+		}
 		var r *runner.Runner
 		if w.lifecycle != nil {
 			r = runner.NewRunnerWithLifecycle(wf, runCtx, w.lifecycle)
