@@ -105,6 +105,15 @@ header {
 
 h1 { font-size: 18px; }
 
+nav { display: flex; gap: 0.75rem; align-items: baseline; }
+
+.nav-link {
+  color: var(--fg3);
+  font-size: 12px;
+  text-decoration: none;
+}
+.nav-link:hover { color: var(--fg); }
+
 .toggle {
   background: var(--toggle-bg);
   border: 1px solid var(--border);
@@ -206,7 +215,10 @@ h1 { font-size: 18px; }
 
 <header>
   <h1>Athanor</h1>
-  <button class="toggle" onclick="toggleTheme()" id="themeBtn"></button>
+  <nav>
+    <a class="nav-link" href="https://github.com/alexisbouchez/athanor">github</a>
+    <button class="toggle" onclick="toggleTheme()" id="themeBtn"></button>
+  </nav>
 </header>
 <p class="subtitle">self-hosted ci &middot; cloudhypervisor microvms</p>
 
