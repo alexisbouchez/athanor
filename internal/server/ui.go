@@ -41,14 +41,14 @@ html[data-theme="dark"] {
   --line-num: #444; --error-bg: #2d1114;
 }
 
-body { font-family: 'Ioskeley Mono', monospace; background: var(--bg); color: var(--fg); font-size: 13px; line-height: 1.5; }
+body { font-family: 'Ioskeley Mono', monospace; background: var(--bg); color: var(--fg); font-size: 14px; line-height: 1.5; }
 
 header { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.5rem; border-bottom: 1px solid var(--border); }
-h1 { font-size: 15px; letter-spacing: 0.05em; }
+h1 { font-size: 17px; letter-spacing: 0.05em; }
 nav { display: flex; gap: 0.75rem; align-items: center; }
-.nav-link { color: var(--fg3); font-size: 11px; text-decoration: none; }
+.nav-link { color: var(--fg3); font-size: 13px; text-decoration: none; }
 .nav-link:hover { color: var(--fg); }
-.toggle { background: var(--toggle-bg); border: 1px solid var(--border); color: var(--fg3); font-family: inherit; font-size: 11px; padding: 1px 8px; cursor: pointer; }
+.toggle { background: var(--toggle-bg); border: 1px solid var(--border); color: var(--fg3); font-family: inherit; font-size: 13px; padding: 2px 10px; cursor: pointer; }
 
 #app { display: flex; height: calc(100vh - 50px); }
 #sidebar { width: 360px; min-width: 300px; border-right: 1px solid var(--border); overflow-y: auto; }
@@ -58,26 +58,26 @@ nav { display: flex; gap: 0.75rem; align-items: center; }
 .run-item:hover { background: var(--log-bg); }
 .run-item.active { background: var(--log-bg); border-left: 3px solid var(--blue); padding-left: calc(1rem - 3px); }
 .run-meta { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px; }
-.run-sha { font-weight: 700; font-size: 12px; }
-.run-ref { color: var(--fg3); font-size: 11px; }
-.run-info { color: var(--muted); font-size: 10px; }
-.run-dur { color: var(--muted); font-size: 10px; }
+.run-sha { font-weight: 700; font-size: 14px; }
+.run-ref { color: var(--fg3); font-size: 13px; }
+.run-info { color: var(--muted); font-size: 12px; }
+.run-dur { color: var(--muted); font-size: 12px; }
 
 .job-tree { padding: 0.5rem 1rem; overflow-y: auto; border-bottom: 1px solid var(--border); max-height: 40vh; }
-.job-row { padding: 2px 0; cursor: pointer; font-size: 12px; display: flex; align-items: baseline; gap: 6px; }
+.job-row { padding: 3px 0; cursor: pointer; font-size: 14px; display: flex; align-items: baseline; gap: 6px; }
 .job-row:hover { color: var(--fg); }
 .job-row.active { font-weight: 700; }
-.step-row { padding: 1px 0 1px 1.25rem; cursor: pointer; font-size: 11px; display: flex; align-items: baseline; gap: 6px; color: var(--fg3); }
+.step-row { padding: 2px 0 2px 1.25rem; cursor: pointer; font-size: 13px; display: flex; align-items: baseline; gap: 6px; color: var(--fg3); }
 .step-row:hover { color: var(--fg2); }
 .step-row.active { color: var(--fg); font-weight: 700; }
-.step-dur { color: var(--muted); font-size: 10px; margin-left: auto; }
+.step-dur { color: var(--muted); font-size: 12px; margin-left: auto; }
 
 #log-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-.log-header { padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); font-size: 12px; display: flex; justify-content: space-between; align-items: center; }
+.log-header { padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); font-size: 14px; display: flex; justify-content: space-between; align-items: center; }
 .log-title { font-weight: 700; }
-.log-count { color: var(--muted); font-size: 10px; }
-#log-search { background: var(--log-bg); border: 1px solid var(--border); color: var(--fg); font-family: inherit; font-size: 11px; padding: 2px 6px; width: 180px; }
-#log-content { flex: 1; overflow-y: auto; font-size: 11px; line-height: 1.6; background: var(--log-bg); }
+.log-count { color: var(--muted); font-size: 12px; }
+#log-search { background: var(--log-bg); border: 1px solid var(--border); color: var(--fg); font-family: inherit; font-size: 13px; padding: 3px 8px; width: 200px; }
+#log-content { flex: 1; overflow-y: auto; font-size: 13px; line-height: 1.6; background: var(--log-bg); }
 .log-line { display: flex; white-space: pre; padding: 0 1rem 0 0; }
 .log-line:hover { background: var(--log-line-hover); }
 .log-line.error { background: var(--error-bg); }
@@ -167,8 +167,8 @@ function renderJobTree(){
   let h='';
   for(let wi=0;wi<(r.workflows||[]).length;wi++){
     const wf=r.workflows[wi];
-    h+='<div style="margin-bottom:4px">'+glyph(wf.status)+' <strong style="font-size:12px">'+esc(wf.name)+'</strong>';
-    if(wf.duration_secs) h+=' <span style="color:var(--muted);font-size:10px">'+dur(wf.duration_secs)+'</span>';
+    h+='<div style="margin-bottom:4px">'+glyph(wf.status)+' <strong style="font-size:14px">'+esc(wf.name)+'</strong>';
+    if(wf.duration_secs) h+=' <span style="color:var(--muted);font-size:12px">'+dur(wf.duration_secs)+'</span>';
     h+='</div>';
     for(let ji=0;ji<(wf.jobs||[]).length;ji++){
       const j=wf.jobs[ji];
