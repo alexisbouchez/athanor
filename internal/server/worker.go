@@ -215,37 +215,46 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 
 		// Track this workflow in the run
 		wfIdx := len(run.Workflows)
-		run.Workflows = append(run.Workflows, WorkflowRun{Name: wf.Name, Status: "running"})
-		w.store.Update(run.ID, func(r *Run) {})
+		wfStart := time.Now()
+		run.Workflows = append(run.Workflows, WorkflowRun{Name: wf.Name, Status: "running", StartedAt: wfStart})
+		w.store.Emit(SSEEvent{Type: "run", Run: run.ID, Data: run})
 
 		// Drain events, capture final status and logs
 		status := "success"
-		jobIndices := make(map[string]int) // jobID -> index in workflow's Jobs
+		jobIndices := make(map[string]int)
 		for event := range r.Events() {
+			now := time.Now()
 			switch e := event.(type) {
 			case runner.JobStarted:
 				idx := len(run.Workflows[wfIdx].Jobs)
 				jobIndices[e.JobID] = idx
 				run.Workflows[wfIdx].Jobs = append(run.Workflows[wfIdx].Jobs, JobRun{
-					ID: e.JobID, Status: "running",
+					ID: e.JobID, Status: "running", StartedAt: now,
 				})
-				w.store.Update(run.ID, func(r *Run) {})
+				w.store.Emit(SSEEvent{Type: "job", Run: run.ID, Data: map[string]any{
+					"wf": wfIdx, "job": e.JobID, "status": "running",
+				}})
 			case runner.StepStarted:
 				if ji, ok := jobIndices[e.JobID]; ok {
 					run.Workflows[wfIdx].Jobs[ji].Steps = append(
 						run.Workflows[wfIdx].Jobs[ji].Steps,
-						StepRun{Name: e.StepName, Status: "running"},
+						StepRun{Name: e.StepName, Status: "running", StartedAt: now},
 					)
-					w.store.Update(run.ID, func(r *Run) {})
+					w.store.Emit(SSEEvent{Type: "step", Run: run.ID, Data: map[string]any{
+						"wf": wfIdx, "job": ji, "step": e.StepIdx, "name": e.StepName, "status": "running",
+					}})
 				}
 			case runner.StepOutput:
 				w.logger.Printf("  [%s] %s", e.JobID, e.Line)
-				// Collect log lines per step
 				if ji, ok := jobIndices[e.JobID]; ok {
 					if e.StepIdx < len(run.Workflows[wfIdx].Jobs[ji].Steps) {
 						step := &run.Workflows[wfIdx].Jobs[ji].Steps[e.StepIdx]
-						step.Lines = append(step.Lines, e.Line)
-						w.store.Update(run.ID, func(r *Run) {})
+						step.Lines = append(step.Lines, LogLine{Time: now, Text: e.Line})
+						// Stream each log line individually for real-time display
+						w.store.Emit(SSEEvent{Type: "log", Run: run.ID, Data: map[string]any{
+							"wf": wfIdx, "job": ji, "step": e.StepIdx,
+							"line": LogLine{Time: now, Text: e.Line},
+						}})
 					}
 				}
 			case runner.StepFinished:
@@ -262,17 +271,25 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 						}
 						step := &run.Workflows[wfIdx].Jobs[ji].Steps[e.StepIdx]
 						step.Status = s
+						step.Duration = now.Sub(step.StartedAt).Seconds()
 						if e.Error != "" {
-							step.Lines = append(step.Lines, "Error: "+e.Error)
+							step.Lines = append(step.Lines, LogLine{Time: now, Text: "Error: " + e.Error})
 						}
-						w.store.Update(run.ID, func(r *Run) {})
+						w.store.Emit(SSEEvent{Type: "step", Run: run.ID, Data: map[string]any{
+							"wf": wfIdx, "job": ji, "step": e.StepIdx, "status": s,
+							"duration": step.Duration,
+						}})
 					}
 				}
 			case runner.JobFinished:
 				w.logger.Printf("  Job %s: %s", e.JobID, e.Status)
 				if ji, ok := jobIndices[e.JobID]; ok {
-					run.Workflows[wfIdx].Jobs[ji].Status = e.Status
-					w.store.Update(run.ID, func(r *Run) {})
+					j := &run.Workflows[wfIdx].Jobs[ji]
+					j.Status = e.Status
+					j.Duration = now.Sub(j.StartedAt).Seconds()
+					w.store.Emit(SSEEvent{Type: "job", Run: run.ID, Data: map[string]any{
+						"wf": wfIdx, "job": e.JobID, "status": e.Status, "duration": j.Duration,
+					}})
 				}
 			case runner.WorkflowFinished:
 				status = e.Status
@@ -280,7 +297,20 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		}
 
 		run.Workflows[wfIdx].Status = status
-		w.store.Update(run.ID, func(r *Run) {})
+		run.Workflows[wfIdx].Duration = time.Since(wfStart).Seconds()
+
+		// Update GitHub Check Run with live progress
+		if checkRunID != 0 {
+			logText := buildCheckRunLog(run.Workflows[wfIdx])
+			w.gh.UpdateCheckRun(ctx, job.RepoFullName, checkRunID, CheckRun{
+				Status: "in_progress",
+				Output: &CheckOutput{
+					Title:   fmt.Sprintf("%s: %s", wf.Name, status),
+					Summary: buildCheckRunSummary(run.Workflows[wfIdx]),
+					Text:    logText,
+				},
+			})
+		}
 
 		// Update the GitHub Check Run with conclusion + log output
 		if checkRunID != 0 {
@@ -329,6 +359,9 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		r.Status = finalState
 		r.Duration = time.Since(r.StartedAt).Seconds()
 	})
+	w.store.Emit(SSEEvent{Type: "done", Run: run.ID, Data: map[string]any{
+		"status": finalState, "duration": time.Since(run.StartedAt).Seconds(),
+	}})
 }
 
 func (w *Worker) prepareWorkspace(ctx context.Context, job Job) (string, error) {
@@ -390,11 +423,38 @@ func (w *Worker) prepareWorkspace(ctx context.Context, job Job) (string, error) 
 	return dir, nil
 }
 
+// buildCheckRunSummary builds a concise Markdown summary table for the GitHub Check Run.
+func buildCheckRunSummary(wf WorkflowRun) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "| Job | Status | Duration |\n|---|---|---|\n")
+	for _, job := range wf.Jobs {
+		icon := "white_check_mark"
+		switch job.Status {
+		case "failure":
+			icon = "x"
+		case "skipped":
+			icon = "fast_forward"
+		case "running":
+			icon = "hourglass_flowing_sand"
+		}
+		dur := ""
+		if job.Duration > 0 {
+			if job.Duration < 60 {
+				dur = fmt.Sprintf("%.1fs", job.Duration)
+			} else {
+				dur = fmt.Sprintf("%dm %ds", int(job.Duration)/60, int(job.Duration)%60)
+			}
+		}
+		fmt.Fprintf(&b, "| :%s: %s | %s | %s |\n", icon, job.ID, job.Status, dur)
+	}
+	return b.String()
+}
+
 // buildCheckRunLog formats a workflow run as Markdown for the GitHub Checks API output.
 func buildCheckRunLog(wf WorkflowRun) string {
 	var b strings.Builder
 	for _, job := range wf.Jobs {
-		fmt.Fprintf(&b, "## Job: %s (%s)\n\n", job.ID, job.Status)
+		fmt.Fprintf(&b, "## %s\n\n", job.ID)
 		for _, step := range job.Steps {
 			icon := "white_check_mark"
 			switch step.Status {
@@ -403,21 +463,31 @@ func buildCheckRunLog(wf WorkflowRun) string {
 			case "skipped":
 				icon = "fast_forward"
 			case "running":
-				icon = "hourglass"
+				icon = "hourglass_flowing_sand"
 			}
-			fmt.Fprintf(&b, "### :%s: %s\n\n", icon, step.Name)
+			dur := ""
+			if step.Duration > 0 {
+				dur = fmt.Sprintf(" (%.1fs)", step.Duration)
+			}
+			fmt.Fprintf(&b, "<details%s>\n<summary>:%s: %s%s</summary>\n\n",
+				func() string {
+					if step.Status == "failure" {
+						return " open"
+					}
+					return ""
+				}(), icon, step.Name, dur)
 			if len(step.Lines) > 0 {
 				b.WriteString("```\n")
 				for _, line := range step.Lines {
-					b.WriteString(line)
+					b.WriteString(line.Text)
 					b.WriteByte('\n')
 				}
-				b.WriteString("```\n\n")
+				b.WriteString("```\n")
 			}
+			b.WriteString("</details>\n\n")
 		}
 	}
 	text := b.String()
-	// GitHub Checks API text field is limited to 65535 chars
 	if len(text) > 65000 {
 		text = text[:65000] + "\n\n... (truncated)"
 	}

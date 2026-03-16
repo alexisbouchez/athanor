@@ -172,9 +172,9 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
-		case run := <-ch:
-			data, _ := json.Marshal(run)
-			fmt.Fprintf(w, "data: %s\n\n", data)
+		case event := <-ch:
+			data, _ := json.Marshal(event)
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, data)
 			flusher.Flush()
 		}
 	}

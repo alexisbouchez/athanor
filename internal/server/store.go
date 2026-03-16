@@ -12,51 +12,69 @@ type RunStore struct {
 	max  int
 
 	// SSE subscribers
-	subMu   sync.Mutex
-	subs    map[chan *Run]struct{}
+	subMu sync.Mutex
+	subs  map[chan SSEEvent]struct{}
+}
+
+// SSEEvent is a typed event for SSE streaming.
+type SSEEvent struct {
+	Type string `json:"type"` // "run", "job", "step", "log", "done"
+	Run  string `json:"run"`
+	Data any    `json:"data"`
 }
 
 // Run represents a single CI run.
 type Run struct {
-	ID        string    `json:"id"`
-	Repo      string    `json:"repo"`
-	SHA       string    `json:"sha"`
-	Ref       string    `json:"ref"`
-	Actor     string    `json:"actor"`
-	Event     string    `json:"event"`
-	Status    string    `json:"status"` // "pending", "running", "success", "failure", "error"
-	StartedAt time.Time `json:"started_at"`
-	Duration  float64   `json:"duration_secs,omitempty"`
+	ID        string        `json:"id"`
+	Repo      string        `json:"repo"`
+	SHA       string        `json:"sha"`
+	Ref       string        `json:"ref"`
+	Actor     string        `json:"actor"`
+	Event     string        `json:"event"`
+	Status    string        `json:"status"`
+	StartedAt time.Time     `json:"started_at"`
+	Duration  float64       `json:"duration_secs,omitempty"`
 	Workflows []WorkflowRun `json:"workflows"`
-	LiveLog   []string  `json:"live_log,omitempty"`
 }
 
 // WorkflowRun represents a workflow within a run.
 type WorkflowRun struct {
-	Name   string   `json:"name"`
-	Status string   `json:"status"`
-	Jobs   []JobRun `json:"jobs"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+	Duration  float64   `json:"duration_secs,omitempty"`
+	Jobs      []JobRun  `json:"jobs"`
 }
 
 // JobRun represents a job within a workflow run.
 type JobRun struct {
-	ID     string    `json:"id"`
-	Status string    `json:"status"`
-	Steps  []StepRun `json:"steps"`
+	ID        string    `json:"id"`
+	Status    string    `json:"status"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+	Duration  float64   `json:"duration_secs,omitempty"`
+	Steps     []StepRun `json:"steps"`
 }
 
 // StepRun represents a step within a job run.
 type StepRun struct {
-	Name   string   `json:"name"`
-	Status string   `json:"status"`
-	Lines  []string `json:"lines,omitempty"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	StartedAt time.Time `json:"started_at,omitempty"`
+	Duration  float64   `json:"duration_secs,omitempty"`
+	Lines     []LogLine `json:"lines,omitempty"`
+}
+
+// LogLine is a single log line with a timestamp.
+type LogLine struct {
+	Time time.Time `json:"t"`
+	Text string    `json:"s"`
 }
 
 // NewRunStore creates a store that keeps the last N runs.
 func NewRunStore(max int) *RunStore {
 	return &RunStore{
 		max:  max,
-		subs: make(map[chan *Run]struct{}),
+		subs: make(map[chan SSEEvent]struct{}),
 	}
 }
 
@@ -68,21 +86,32 @@ func (s *RunStore) Add(r *Run) {
 		s.runs = s.runs[:s.max]
 	}
 	s.mu.Unlock()
-	s.notify(r)
+	s.Emit(SSEEvent{Type: "run", Run: r.ID, Data: r})
 }
 
-// Update updates the first run matching the ID and notifies subscribers.
+// Update updates the first run matching the ID.
 func (s *RunStore) Update(id string, fn func(*Run)) {
 	s.mu.Lock()
 	for _, r := range s.runs {
 		if r.ID == id {
 			fn(r)
 			s.mu.Unlock()
-			s.notify(r)
 			return
 		}
 	}
 	s.mu.Unlock()
+}
+
+// Emit sends a typed event to all SSE subscribers.
+func (s *RunStore) Emit(e SSEEvent) {
+	s.subMu.Lock()
+	defer s.subMu.Unlock()
+	for ch := range s.subs {
+		select {
+		case ch <- e:
+		default:
+		}
+	}
 }
 
 // Recent returns the last N runs.
@@ -97,9 +126,9 @@ func (s *RunStore) Recent(n int) []*Run {
 	return out
 }
 
-// Subscribe returns a channel that receives run updates.
-func (s *RunStore) Subscribe() chan *Run {
-	ch := make(chan *Run, 16)
+// Subscribe returns a channel that receives SSE events.
+func (s *RunStore) Subscribe() chan SSEEvent {
+	ch := make(chan SSEEvent, 64)
 	s.subMu.Lock()
 	s.subs[ch] = struct{}{}
 	s.subMu.Unlock()
@@ -107,21 +136,9 @@ func (s *RunStore) Subscribe() chan *Run {
 }
 
 // Unsubscribe removes a subscriber.
-func (s *RunStore) Unsubscribe(ch chan *Run) {
+func (s *RunStore) Unsubscribe(ch chan SSEEvent) {
 	s.subMu.Lock()
 	delete(s.subs, ch)
 	s.subMu.Unlock()
 	close(ch)
-}
-
-func (s *RunStore) notify(r *Run) {
-	s.subMu.Lock()
-	defer s.subMu.Unlock()
-	for ch := range s.subs {
-		select {
-		case ch <- r:
-		default:
-			// drop if subscriber is slow
-		}
-	}
 }
