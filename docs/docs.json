@@ -13,12 +13,6 @@
     "isHidden": false
   },
   "navbar": {
-    "links": [
-      {
-        "type": "github",
-        "href": "https://github.com/alexisbouchez/athanor"
-      }
-    ],
     "primary": {
       "type": "github",
       "label": "GitHub",
