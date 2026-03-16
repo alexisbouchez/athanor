@@ -39,7 +39,7 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 		}
 
 		// Build env export block (SSH Setenv is usually disabled)
-		// Only export CI-relevant vars, not the entire host environment
+		// Pass all vars except host-specific ones that would break the VM
 		var envExports strings.Builder
 		for _, env := range opts.Env {
 			parts := strings.SplitN(env, "=", 2)
@@ -47,20 +47,23 @@ func NewSSHExec(addr string, keyPath string) runner.ExecStepFunc {
 				continue
 			}
 			key := parts[0]
-			// Skip host-only vars and large vars that break SSH
+			// Skip host-specific vars
 			switch {
 			case key == "PATH":
-				// Use VM's PATH, don't override
+				continue // VM has its own PATH
+			case key == "SHELL" || key == "TERM" || key == "LANG" || key == "LC_ALL":
 				continue
-			case strings.HasPrefix(key, "GITHUB_"):
-				// Always export GITHUB_* vars
-			case strings.HasPrefix(key, "CI"):
-			case strings.HasPrefix(key, "RUNNER_"):
-			case strings.HasPrefix(key, "INPUT_"):
-			case key == "HOME":
-			case key == "GOPATH":
-			case key == "GOMODCACHE":
-			default:
+			case key == "TMPDIR" || key == "TEMP" || key == "TMP":
+				continue
+			case key == "SSH_AUTH_SOCK" || key == "SSH_CLIENT" || key == "SSH_CONNECTION":
+				continue
+			case strings.HasPrefix(key, "XDG_"):
+				continue
+			case strings.HasPrefix(key, "DBUS_"):
+				continue
+			case key == "DISPLAY" || key == "WAYLAND_DISPLAY":
+				continue
+			case key == "_":
 				continue
 			}
 			envExports.WriteString(fmt.Sprintf("export %s=%s\n", key, shellQuote(parts[1])))
