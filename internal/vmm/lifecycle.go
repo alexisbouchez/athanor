@@ -29,6 +29,7 @@ type VMJobLifecycle struct {
 	logger  *log.Logger
 	mu      sync.Mutex
 	vms     map[string]*vmState
+	sem     chan struct{} // limits concurrent VMs
 }
 
 type vmState struct {
@@ -39,16 +40,32 @@ type vmState struct {
 
 // NewVMJobLifecycle creates a new VM lifecycle manager.
 func NewVMJobLifecycle(cfg VMJobConfig, network *Network) *VMJobLifecycle {
+	// Limit concurrent VMs based on available memory (1 VM per GB, minimum 1)
+	maxVMs := cfg.MemoryMB / 1024
+	if maxVMs < 1 {
+		maxVMs = 1
+	}
+	// Cap at 3 to be safe
+	if maxVMs > 3 {
+		maxVMs = 3
+	}
 	return &VMJobLifecycle{
 		cfg:     cfg,
 		network: network,
 		logger:  log.New(os.Stderr, "[vmm] ", log.LstdFlags),
 		vms:     make(map[string]*vmState),
+		sem:     make(chan struct{}, maxVMs),
 	}
 }
 
 // Setup spins up a microVM for the given job.
 func (l *VMJobLifecycle) Setup(ctx context.Context, jobID string, hostWorkspace string) (runner.ExecStepFunc, string, error) {
+	l.logger.Printf("Waiting for VM slot for job %s", jobID)
+	select {
+	case l.sem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, "", ctx.Err()
+	}
 	l.logger.Printf("Setting up VM for job %s", jobID)
 
 	// Sanitize job ID for use in filenames
@@ -134,6 +151,7 @@ func (l *VMJobLifecycle) Teardown(ctx context.Context, jobID string) error {
 	l.mu.Unlock()
 
 	if !ok {
+		<-l.sem // release slot
 		return nil
 	}
 
@@ -151,6 +169,9 @@ func (l *VMJobLifecycle) Teardown(ctx context.Context, jobID string) error {
 
 	// Remove rootfs copy
 	os.Remove(state.diskPath)
+
+	// Release VM slot
+	<-l.sem
 
 	return nil
 }

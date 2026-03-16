@@ -13,7 +13,9 @@ type BuiltinFunc func(ctx context.Context, inputs map[string]string, workspace s
 
 // Builtins maps action names (owner/repo) to built-in implementations.
 var Builtins = map[string]BuiltinFunc{
-	"actions/checkout": builtinCheckout,
+	"actions/checkout":   builtinCheckout,
+	"actions/setup-node": builtinSetupNode,
+	"actions/setup-go":   builtinSetupGo,
 }
 
 // LookupBuiltin checks if a GitHub action has a built-in implementation.
@@ -56,5 +58,17 @@ func builtinCheckout(ctx context.Context, inputs map[string]string, workspace st
 		}
 	}
 
+	return nil, nil
+}
+
+// builtinSetupNode is a no-op shim for actions/setup-node.
+// Node.js is pre-installed in the VM rootfs.
+func builtinSetupNode(_ context.Context, _ map[string]string, _ string) (map[string]string, error) {
+	return nil, nil
+}
+
+// builtinSetupGo is a no-op shim for actions/setup-go.
+// Go is pre-installed in the VM rootfs.
+func builtinSetupGo(_ context.Context, _ map[string]string, _ string) (map[string]string, error) {
 	return nil, nil
 }
