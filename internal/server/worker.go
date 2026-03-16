@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/alexj212/athanor/internal/runner"
 	"github.com/alexj212/athanor/internal/vmm"
@@ -31,6 +32,7 @@ type Worker struct {
 	gh        *GitHubClient
 	logger    *log.Logger
 	lifecycle runner.JobLifecycle
+	store     *RunStore
 }
 
 // NewWorker creates a new job worker.
@@ -86,6 +88,19 @@ func (w *Worker) Enqueue(job Job) bool {
 
 func (w *Worker) processJob(ctx context.Context, job Job) {
 	w.logger.Printf("Processing %s @ %s (%s)", job.RepoFullName, job.SHA[:8], job.Ref)
+
+	// Record run in store
+	run := &Run{
+		ID:        job.SHA[:8],
+		Repo:      job.RepoFullName,
+		SHA:       job.SHA,
+		Ref:       job.Ref,
+		Actor:     job.Actor,
+		Event:     job.EventName,
+		Status:    "running",
+		StartedAt: time.Now(),
+	}
+	w.store.Add(run)
 
 	// Set pending status
 	if err := w.gh.SetCommitStatus(ctx, job.RepoFullName, job.SHA, "pending", "Build started", "athanor"); err != nil {
@@ -165,22 +180,62 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 		}
 		go r.Run(ctx)
 
+		// Track this workflow in the run
+		wfIdx := len(run.Workflows)
+		run.Workflows = append(run.Workflows, WorkflowRun{Name: wf.Name, Status: "running"})
+		w.store.Update(run.ID, func(r *Run) {})
+
 		// Drain events, capture final status
 		status := "success"
+		jobIndices := make(map[string]int) // jobID -> index in workflow's Jobs
 		for event := range r.Events() {
 			switch e := event.(type) {
+			case runner.JobStarted:
+				idx := len(run.Workflows[wfIdx].Jobs)
+				jobIndices[e.JobID] = idx
+				run.Workflows[wfIdx].Jobs = append(run.Workflows[wfIdx].Jobs, JobRun{
+					ID: e.JobID, Status: "running",
+				})
+				w.store.Update(run.ID, func(r *Run) {})
+			case runner.StepStarted:
+				if ji, ok := jobIndices[e.JobID]; ok {
+					run.Workflows[wfIdx].Jobs[ji].Steps = append(
+						run.Workflows[wfIdx].Jobs[ji].Steps,
+						StepRun{Name: e.StepName, Status: "running"},
+					)
+					w.store.Update(run.ID, func(r *Run) {})
+				}
 			case runner.StepOutput:
 				w.logger.Printf("  [%s] %s", e.JobID, e.Line)
 			case runner.StepFinished:
 				if e.Error != "" {
 					w.logger.Printf("  [%s] Step %d error: %s", e.JobID, e.StepIdx, e.Error)
 				}
+				if ji, ok := jobIndices[e.JobID]; ok {
+					if e.StepIdx < len(run.Workflows[wfIdx].Jobs[ji].Steps) {
+						s := "success"
+						if e.Skipped {
+							s = "skipped"
+						} else if e.ExitCode != 0 || e.Error != "" {
+							s = "failure"
+						}
+						run.Workflows[wfIdx].Jobs[ji].Steps[e.StepIdx].Status = s
+						w.store.Update(run.ID, func(r *Run) {})
+					}
+				}
 			case runner.JobFinished:
 				w.logger.Printf("  Job %s: %s", e.JobID, e.Status)
+				if ji, ok := jobIndices[e.JobID]; ok {
+					run.Workflows[wfIdx].Jobs[ji].Status = e.Status
+					w.store.Update(run.ID, func(r *Run) {})
+				}
 			case runner.WorkflowFinished:
 				status = e.Status
 			}
 		}
+
+		run.Workflows[wfIdx].Status = status
+		w.store.Update(run.ID, func(r *Run) {})
 
 		w.logger.Printf("Workflow %q finished: %s", wf.Name, status)
 		if status != "success" {
@@ -198,6 +253,12 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 	if err := w.gh.SetCommitStatus(ctx, job.RepoFullName, job.SHA, finalState, description, "athanor"); err != nil {
 		w.logger.Printf("Warning: failed to set final status: %v", err)
 	}
+
+	// Update run in store
+	w.store.Update(run.ID, func(r *Run) {
+		r.Status = finalState
+		r.Duration = time.Since(r.StartedAt).Seconds()
+	})
 }
 
 func (w *Worker) prepareWorkspace(ctx context.Context, job Job) (string, error) {

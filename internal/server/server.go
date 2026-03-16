@@ -91,7 +91,9 @@ type Server struct {
 func New(cfg *Config) *Server {
 	logger := log.New(os.Stdout, "[athanor] ", log.LstdFlags)
 	gh := NewGitHubClient(cfg.GitHubToken)
+	store := NewRunStore(50)
 	worker := NewWorker(cfg, gh, logger)
+	worker.store = store
 
 	s := &Server{
 		cfg:    cfg,
@@ -103,8 +105,62 @@ func New(cfg *Config) *Server {
 
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("POST /webhook", s.handleWebhook)
+	s.mux.HandleFunc("GET /api/runs", s.handleAPIRuns)
+	s.mux.HandleFunc("GET /api/events", s.handleSSE)
+	s.mux.HandleFunc("GET /font/regular.woff2", s.handleFontRegular)
+	s.mux.HandleFunc("GET /font/bold.woff2", s.handleFontBold)
+	s.mux.HandleFunc("GET /", s.handleUI)
 
 	return s
+}
+
+func (s *Server) handleAPIRuns(w http.ResponseWriter, r *http.Request) {
+	runs := s.worker.store.Recent(20)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(runs)
+}
+
+func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	ch := s.worker.store.Subscribe()
+	defer s.worker.store.Unsubscribe(ch)
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case run := <-ch:
+			data, _ := json.Marshal(run)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+func (s *Server) handleFontRegular(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "font/woff2")
+	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	w.Write(fontRegular)
+}
+
+func (s *Server) handleFontBold(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "font/woff2")
+	w.Header().Set("Cache-Control", "public, max-age=31536000")
+	w.Write(fontBold)
+}
+
+func (s *Server) handleUI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(indexHTML))
 }
 
 // Run starts the server and blocks until ctx is cancelled.

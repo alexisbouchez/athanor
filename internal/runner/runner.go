@@ -365,7 +365,6 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 		}
 
 		if stepErr != nil {
-			r.events <- StepOutput{JobID: jobID, StepIdx: i, Line: fmt.Sprintf("[debug] step %d error: %v", i, stepErr)}
 			r.events <- StepFinished{JobID: jobID, StepIdx: i, ExitCode: 1, Error: stepErr.Error()}
 			if !step.ContinueOnError {
 				jobFailed = true
@@ -375,11 +374,9 @@ func (r *Runner) runJob(ctx context.Context, jobID string, job workflow.Job, mat
 			continue
 		}
 
-		r.events <- StepOutput{JobID: jobID, StepIdx: i, Line: fmt.Sprintf("[debug] step %d finished, exitCode=%d", i, exitCode)}
 		r.events <- StepFinished{JobID: jobID, StepIdx: i, ExitCode: exitCode}
 
 		if exitCode != 0 && !step.ContinueOnError {
-			r.events <- StepOutput{JobID: jobID, StepIdx: i, Line: fmt.Sprintf("[debug] step %d failed, breaking", i)}
 			jobFailed = true
 			rc.Job.Status = "failure"
 			break
