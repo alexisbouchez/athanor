@@ -326,7 +326,7 @@ func (w *Worker) processJob(ctx context.Context, job Job) {
 				CompletedAt: &completedAt,
 				Output: &CheckOutput{
 					Title:   fmt.Sprintf("%s: %s", wf.Name, conclusion),
-					Summary: fmt.Sprintf("Workflow **%s** finished with status **%s**", wf.Name, conclusion),
+					Summary: buildCheckRunSummary(run.Workflows[wfIdx]),
 					Text:    logText,
 				},
 			})

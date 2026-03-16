@@ -26,9 +26,10 @@ type Config struct {
 	RootfsPath string
 	SSHKeyPath string
 	VMDiskDir  string
-	VMCPUs        int
-	VMMemoryMB    int
-	VMMaxParallel int
+	VMCPUs         int
+	VMMemoryMB     int
+	VMMaxParallel  int
+	DashboardToken string // if set, web UI requires authentication
 
 	// Secrets loaded from env vars prefixed with SECRET_
 	Secrets map[string]string
@@ -65,8 +66,9 @@ func LoadConfig() (*Config, error) {
 		VMDiskDir:     envOr("VM_DISK_DIR", "/var/lib/athanor/vm-disks"),
 		VMCPUs:        envOrInt("VM_CPUS", 2),
 		VMMemoryMB:    envOrInt("VM_MEMORY_MB", 2048),
-		VMMaxParallel: envOrInt("VM_MAX_PARALLEL", 0),
-		Secrets:       loadSecrets(),
+		VMMaxParallel:  envOrInt("VM_MAX_PARALLEL", 0),
+		DashboardToken: os.Getenv("DASHBOARD_TOKEN"),
+		Secrets:        loadSecrets(),
 	}
 	if cfg.WebhookSecret == "" {
 		return nil, fmt.Errorf("WEBHOOK_SECRET environment variable is required")
@@ -139,11 +141,13 @@ func New(cfg *Config) *Server {
 
 	s.mux.HandleFunc("GET /health", s.handleHealth)
 	s.mux.HandleFunc("POST /webhook", s.handleWebhook)
-	s.mux.HandleFunc("GET /api/runs", s.handleAPIRuns)
-	s.mux.HandleFunc("GET /api/events", s.handleSSE)
+	s.mux.HandleFunc("GET /api/runs", s.requireAuth(s.handleAPIRuns))
+	s.mux.HandleFunc("GET /api/events", s.requireAuth(s.handleSSE))
 	s.mux.HandleFunc("GET /font/regular.woff2", s.handleFontRegular)
 	s.mux.HandleFunc("GET /font/bold.woff2", s.handleFontBold)
-	s.mux.HandleFunc("GET /", s.handleUI)
+	s.mux.HandleFunc("GET /login", s.handleLogin)
+	s.mux.HandleFunc("POST /login", s.handleLoginPost)
+	s.mux.HandleFunc("GET /", s.requireAuth(s.handleUI))
 
 	return s
 }
@@ -178,6 +182,58 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			flusher.Flush()
 		}
 	}
+}
+
+// requireAuth wraps a handler with token-based authentication.
+// If DASHBOARD_TOKEN is not set, all requests are allowed.
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.DashboardToken == "" {
+			next(w, r)
+			return
+		}
+
+		// Check cookie
+		if c, err := r.Cookie("athanor_token"); err == nil {
+			if hmac.Equal([]byte(c.Value), []byte(s.cfg.DashboardToken)) {
+				next(w, r)
+				return
+			}
+		}
+
+		// Check query param (for SSE connections)
+		if r.URL.Query().Get("token") == s.cfg.DashboardToken {
+			next(w, r)
+			return
+		}
+
+		http.Redirect(w, r, "/login", http.StatusSeeOther)
+	}
+}
+
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(loginHTML))
+}
+
+func (s *Server) handleLoginPost(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	token := r.FormValue("token")
+	if s.cfg.DashboardToken != "" && hmac.Equal([]byte(token), []byte(s.cfg.DashboardToken)) {
+		http.SetCookie(w, &http.Cookie{
+			Name:     "athanor_token",
+			Value:    token,
+			Path:     "/",
+			HttpOnly: true,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   86400 * 30, // 30 days
+		})
+		http.Redirect(w, r, "/", http.StatusSeeOther)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(http.StatusUnauthorized)
+	w.Write([]byte(loginHTML))
 }
 
 func (s *Server) handleFontRegular(w http.ResponseWriter, r *http.Request) {

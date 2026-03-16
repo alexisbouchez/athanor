@@ -287,7 +287,10 @@ document.addEventListener('DOMContentLoaded',()=>{
 fetch('/api/runs').then(r=>r.json()).then(data=>{runs=data||[];autoSelect();renderSidebar();renderJobTree();renderLogs();});
 
 // SSE - granular event handling
-const es=new EventSource('/api/events');
+// SSE needs auth token - extract from cookie
+function getCookie(n){const v=document.cookie.match('(^|;)\\s*'+n+'=([^;]+)');return v?v[2]:'';}
+const sseUrl='/api/events'+(getCookie('athanor_token')?'?token='+getCookie('athanor_token'):'');
+const es=new EventSource(sseUrl);
 const liveDot=document.getElementById('liveDot');
 
 es.addEventListener('run',e=>{

@@ -79,8 +79,8 @@ func (c *GitHubClient) getToken(ctx context.Context) string {
 // CheckRun is the request/response for the GitHub Checks API.
 type CheckRun struct {
 	ID          int64          `json:"id,omitempty"`
-	Name        string         `json:"name"`
-	HeadSHA     string         `json:"head_sha"`
+	Name        string         `json:"name,omitempty"`
+	HeadSHA     string         `json:"head_sha,omitempty"`
 	Status      string         `json:"status,omitempty"`       // "queued", "in_progress", "completed"
 	Conclusion  string         `json:"conclusion,omitempty"`   // "success", "failure", "cancelled", "skipped"
 	StartedAt   *time.Time     `json:"started_at,omitempty"`
