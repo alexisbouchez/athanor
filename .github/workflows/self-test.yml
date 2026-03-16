@@ -4,17 +4,29 @@ jobs:
   vet:
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - name: Go vet
         run: go vet ./...
   test:
     runs-on: ubuntu-latest
     needs: vet
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - name: Run tests
         run: go test ./...
   build:
     runs-on: ubuntu-latest
     needs: vet
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
       - name: Build binary
         run: go build -o bin/athanor ./cmd/athanor
